@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
-import '../../../../core/utils/whatsapp_link_helper.dart';
 
 /// 30-Minute Gate Heat Preservation Countdown Card (Reverse-Engineered Cold-Food Protection)
 /// Activates when a breakfast meal is confirmed dropped at the gate security desk.
@@ -127,7 +126,6 @@ class _GateHeatPreservationCardState extends State<GateHeatPreservationCard>
     final bool isPipingHot = totalSeconds > 20 * 60; // 30-20 min
     final bool isWarm = totalSeconds <= 20 * 60 && totalSeconds > 10 * 60; // 20-10 min
     final bool isCooling = totalSeconds <= 10 * 60 && totalSeconds > 0; // 10-0 min
-    final bool isCooled = totalSeconds == 0;
 
     Color stageColor;
     Color stageBg;

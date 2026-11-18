@@ -340,6 +340,32 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                   .animate()
                   .fadeIn(delay: 250.ms, duration: 400.ms),
 
+              const SizedBox(height: 12),
+
+              // Quick Auto-fill for Testing & Demo
+              Center(
+                child: TextButton.icon(
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    const testCode = '123456';
+                    for (int i = 0; i < 6; i++) {
+                      _controllers[i].text = testCode[i];
+                    }
+                    setState(() {});
+                    _verifyOtp();
+                  },
+                  icon: const Icon(Icons.bolt_rounded, size: 15, color: AppColors.goldenAmber),
+                  label: Text(
+                    'Auto-fill Demo Code (123456)',
+                    style: AppTypography.caption.copyWith(
+                      color: AppColors.goldenAmber,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ),
+              ),
+
               const SizedBox(height: 36),
 
               // Verify & Continue Button

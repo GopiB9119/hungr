@@ -675,19 +675,23 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
       },
       borderRadius: AppDimensions.radiusCircle,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.electricSaffron : AppColors.matteCharcoal,
+          color: isSelected ? AppColors.zomatoRed : Colors.white,
           borderRadius: AppDimensions.radiusCircle,
           border: Border.all(
-            color: isSelected ? AppColors.electricSaffron : AppColors.charcoalBorder,
+            color: isSelected ? AppColors.zomatoRed : AppColors.charcoalBorder,
           ),
+          boxShadow: isSelected
+              ? const [BoxShadow(color: AppColors.zomatoRedGlow, blurRadius: 6, offset: Offset(0, 2))]
+              : null,
         ),
         child: Text(
           label,
           style: AppTypography.labelSmall.copyWith(
-            color: isSelected ? Colors.black : AppColors.textMutedSlate,
+            color: isSelected ? Colors.white : AppColors.textSecondary,
             fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 11.5,
           ),
         ),
       ),

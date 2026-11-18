@@ -13,6 +13,41 @@ enum PassTierType {
   power15Day,
 }
 
+extension PassTierTypeX on PassTierType {
+  String get displayName {
+    switch (this) {
+      case PassTierType.trial3Day:
+        return '3-Day Starter Pass';
+      case PassTierType.routine7Day:
+        return '7-Day Routine Pass';
+      case PassTierType.power15Day:
+        return '15-Day Power Pass';
+    }
+  }
+
+  int get price {
+    switch (this) {
+      case PassTierType.trial3Day:
+        return 165;
+      case PassTierType.routine7Day:
+        return 350;
+      case PassTierType.power15Day:
+        return 720;
+    }
+  }
+
+  int get totalMeals {
+    switch (this) {
+      case PassTierType.trial3Day:
+        return 3;
+      case PassTierType.routine7Day:
+        return 7;
+      case PassTierType.power15Day:
+        return 15;
+    }
+  }
+}
+
 class PassCard3D extends ConsumerWidget {
   final PassTierType tier;
   final bool isSelected;

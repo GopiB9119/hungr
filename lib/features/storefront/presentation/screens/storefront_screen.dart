@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:animations/animations.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/date_time_utils.dart';
@@ -12,6 +11,7 @@ import '../../../../core/widgets/confetti_burst_overlay.dart';
 import '../../../../core/widgets/hungr_network_image.dart';
 import '../../domain/tiffin_item_model.dart';
 import '../../domain/tiffin_shop_model.dart';
+import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
 import '../viewmodels/cart_viewmodel.dart';
 import '../viewmodels/customer_dashboard_viewmodel.dart';
 import '../viewmodels/tiffin_shops_viewmodel.dart';
@@ -57,6 +57,7 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
     final cartState = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartViewModelProvider.notifier);
     final shops = ref.watch(tiffinShopsProvider);
+    final authState = ref.watch(authProvider);
 
     // Silent Realtime Operations Live Sync Listener (Notifies user if a kitchen updates)
     ref.listen(liveOpsEventStreamProvider, (previous, next) {
@@ -93,7 +94,6 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
       });
     });
 
-    final bool isSingleDayMode = cartState.orderMode == OrderMode.singleDay;
     final bool isPastCutoff = DateTimeUtils.isAfterCutoffToday();
 
     // Filter items based on selected category
@@ -245,6 +245,40 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
+
+                        // Meal Passes Icon Button (Left side of Profile icon)
+                        InkWell(
+                          onTap: () {
+                            HapticFeedback.lightImpact();
+                            _showMealPassBottomSheet(context, cartNotifier);
+                          },
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: const Color(0xFFFDE68A)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.card_membership_rounded, color: Color(0xFFB45309), size: 16),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Pass',
+                                  style: AppTypography.labelSmall.copyWith(
+                                    color: const Color(0xFF92400E),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11.5,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
                         // Customer Profile Icon
                         InkWell(
                           onTap: () {
@@ -283,165 +317,53 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                           _buildCutoffRibbon(isPastCutoff),
                           const SizedBox(height: 14),
 
-                          // 3. Dual Mode Switcher (Daily Tiffin vs Meal Passes)
-                          _buildModeSwitcher(isSingleDayMode, cartNotifier),
+                          // 2C. Personalized Morning Greeting Header
+                          _buildGreetingHeader(authState.userName),
                           const SizedBox(height: 18),
 
-                          // 4A. SINGLE-DAY TIFFIN VIEW
-                          if (isSingleDayMode) ...[
-                            // Partner Kitchens Section (Horizontal Scrollable Showcase)
-                            _buildKitchensSection(shops),
-                            const SizedBox(height: 20),
+                          // Partner Kitchens Section (Horizontal Scrollable Showcase)
+                          _buildKitchensSection(shops),
+                          const SizedBox(height: 20),
 
-                            // Category Selector Chips
-                            _buildCategoryChips(),
-                            const SizedBox(height: 14),
+                          // Category Selector Chips
+                          _buildCategoryChips(),
+                          const SizedBox(height: 14),
 
-                            // Menu Section Header
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Fresh Morning Dishes',
-                                  style: AppTypography.displayMedium.copyWith(fontSize: 17, color: AppColors.textPrimary),
-                                ),
-                                Text(
-                                  '${displayedItems.length} items',
-                                  style: AppTypography.caption.copyWith(color: AppColors.textSubtle),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Prepared at dawn and dropped at your security gate by 7:30 AM',
-                              style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11.5),
-                            ),
-                            const SizedBox(height: 12),
+                          // Menu Section Header
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Fresh Morning Dishes',
+                                style: AppTypography.displayMedium.copyWith(fontSize: 17, color: AppColors.textPrimary),
+                              ),
+                              Text(
+                                '${displayedItems.length} items',
+                                style: AppTypography.caption.copyWith(color: AppColors.textSubtle),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Prepared at dawn and dropped at your security gate by 7:30 AM',
+                            style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11.5),
+                          ),
+                          const SizedBox(height: 12),
 
-                            // A-la-carte Items List
-                            ...displayedItems.map((item) {
-                              final quantity = cartState.itemQuantities[item.id] ?? 0;
-                              return TiffinItemCard(
-                                item: item,
-                                quantity: quantity,
-                                onAdd: () => cartNotifier.addItem(item.id),
-                                onRemove: () => cartNotifier.removeItem(item.id),
-                              );
-                            }),
+                          // A-la-carte Items List
+                          ...displayedItems.map((item) {
+                            final quantity = cartState.itemQuantities[item.id] ?? 0;
+                            return TiffinItemCard(
+                              item: item,
+                              quantity: quantity,
+                              onAdd: () => cartNotifier.addItem(item.id),
+                              onRemove: () => cartNotifier.removeItem(item.id),
+                            );
+                          }),
 
-                            const SizedBox(height: 16),
-                            // Hostel Roommate Saving Tip
-                            _buildRoommateTip(),
-                          ] else ...[
-                            // 4B. MULTI-DAY MEAL PASSES VIEW
-                            const ViralReferralBanner(),
-                            const SizedBox(height: 4),
-
-                            Text(
-                              'Choose Your Routine Pass',
-                              style: AppTypography.displayMedium.copyWith(fontSize: 18, color: AppColors.textPrimary),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Pause anytime before 9:00 PM • Automatic zero-loss rollover guarantee',
-                              style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11.5),
-                            ),
-                            const SizedBox(height: 14),
-
-                            PassCard3D(
-                              tier: PassTierType.routine7Day,
-                              isSelected: _selectedTier == PassTierType.routine7Day,
-                              onTap: () {
-                                setState(() => _selectedTier = PassTierType.routine7Day);
-                                cartNotifier.selectPassTier(PassTierType.routine7Day);
-                              },
-                            ),
-                            PassCard3D(
-                              tier: PassTierType.power15Day,
-                              isSelected: _selectedTier == PassTierType.power15Day,
-                              onTap: () {
-                                setState(() => _selectedTier = PassTierType.power15Day);
-                                cartNotifier.selectPassTier(PassTierType.power15Day);
-                              },
-                            ),
-                            PassCard3D(
-                              tier: PassTierType.trial3Day,
-                              isSelected: _selectedTier == PassTierType.trial3Day,
-                              onTap: () {
-                                setState(() => _selectedTier = PassTierType.trial3Day);
-                                cartNotifier.selectPassTier(PassTierType.trial3Day);
-                              },
-                            ),
-
-                            const SizedBox(height: 20),
-
-                            // Tomorrow's Combo Preference
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Tomorrow’s Combo Preference',
-                                  style: AppTypography.titleMedium.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF3F4F6),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    'ROTATING DAILY',
-                                    style: AppTypography.monoBadge.copyWith(fontSize: 9, color: AppColors.textSecondary),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              'You can swap your combo daily in your Ticket Calendar',
-                              style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11),
-                            ),
-                            const SizedBox(height: 10),
-
-                            HeroComboCard(
-                              comboId: 'combo_a',
-                              tagTitle: 'OPTION A',
-                              title: 'Hot Set Dosa (2 pcs)',
-                              chefName: 'Sri Venkateshwara Hub',
-                              description: '2 Fluffy Set Dosas + Groundnut Chutney + Allam Chutney + Piping Sambar.',
-                              calories: '420',
-                              protein: '11g',
-                              carbs: '68g',
-                              comboIcon: Icons.breakfast_dining,
-                              isSelected: _selectedComboId == 'combo_a',
-                              onSelected: () => setState(() => _selectedComboId = 'combo_a'),
-                            ),
-
-                            HeroComboCard(
-                              comboId: 'combo_b',
-                              tagTitle: 'OPTION B',
-                              title: 'Steamed Idli (4 pcs) + Medu Vada (1 pc)',
-                              chefName: 'Amma Chethi Vanta',
-                              description: '4 Soft Steamed Idlis + 1 Crispy Medu Vada + Chutney + Drumstick Sambar.',
-                              calories: '390',
-                              protein: '14g',
-                              carbs: '62g',
-                              comboIcon: Icons.dinner_dining,
-                              isSelected: _selectedComboId == 'combo_b',
-                              onSelected: () => setState(() => _selectedComboId = 'combo_b'),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // Morning Add-ons Selector
-                            MorningAddonsSelector(
-                              selectedAddonIds: _selectedPassAddons,
-                              onToggleAddon: _onTogglePassAddon,
-                            ),
-                          ],
+                          const SizedBox(height: 16),
+                          // Hostel Roommate Saving Tip
+                          _buildRoommateTip(),
                         ],
                       ),
                     ),
@@ -459,6 +381,86 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
   }
 
   // --- SUB-WIDGET BUILDERS (CLEAN & MODULAR) ---
+
+  /// Personalized Time-Aware Greeting Header
+  Widget _buildGreetingHeader(String userName) {
+    final hour = DateTime.now().hour;
+    final String greeting;
+    final String icon;
+    if (hour < 12) {
+      greeting = 'Good Morning';
+      icon = '☀️';
+    } else if (hour < 17) {
+      greeting = 'Good Afternoon';
+      icon = '🌤️';
+    } else {
+      greeting = 'Good Evening';
+      icon = '🌙';
+    }
+
+    final firstName = userName.trim().isNotEmpty ? userName.trim().split(' ').first : 'Student';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$greeting, $firstName $icon',
+                style: AppTypography.displayMedium.copyWith(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Fresh woodfire breakfast dropped by 07:30 AM',
+                style: AppTypography.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 11.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDF4),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFBBF7D0)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF16A34A),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                'Khammam Live',
+                style: AppTypography.caption.copyWith(
+                  color: const Color(0xFF15803D),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   /// Active Morning Order Status Pill (Clean Swiggy/Zomato style)
   Widget _buildActiveOrderBanner(BuildContext context, CustomerDashboardState customerState) {
@@ -552,100 +554,225 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
     );
   }
 
-  /// Mode Switcher (Daily Tiffins vs Meal Passes)
-  Widget _buildModeSwitcher(bool isSingleDayMode, CartViewModel cartNotifier) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.charcoalBorder),
-      ),
-      child: Row(
-        children: [
-          // Single-Day Tiffin Option
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                cartNotifier.setOrderMode(OrderMode.singleDay);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                decoration: BoxDecoration(
-                  color: isSingleDayMode ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                  boxShadow: isSingleDayMode
-                      ? const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    '🍱 Daily Tiffins',
-                    style: AppTypography.titleSmall.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                      color: isSingleDayMode ? AppColors.zomatoRed : AppColors.textSecondary,
+  /// Dedicated Bottom Sheet for Meal Passes (opened from Pass button next to Profile)
+  void _showMealPassBottomSheet(BuildContext context, CartViewModel cartNotifier) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.88,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  // Drag Handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                ),
-              ),
-            ),
-          ),
 
-          // Multi-Day Passes Option
-          Expanded(
-            child: GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                cartNotifier.setOrderMode(OrderMode.subscriptionPass);
-                cartNotifier.selectPassTier(_selectedTier);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(vertical: 9),
-                decoration: BoxDecoration(
-                  color: !isSingleDayMode ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(9),
-                  boxShadow: !isSingleDayMode
-                      ? const [BoxShadow(color: Color(0x14000000), blurRadius: 6, offset: Offset(0, 2))]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      '🎟️ Meal Passes',
-                      style: AppTypography.titleSmall.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
-                        color: !isSingleDayMode ? AppColors.zomatoRed : AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF3C7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        'SAVE 35%',
-                        style: AppTypography.caption.copyWith(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFFB45309),
+                  // Header with Close
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEF3C7),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.card_membership_rounded, color: Color(0xFFB45309), size: 20),
+                            ),
+                            const SizedBox(width: 10),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Hungr Routine Passes',
+                                  style: AppTypography.displayMedium.copyWith(fontSize: 17, color: AppColors.textPrimary),
+                                ),
+                                Text(
+                                  'Zero-loss rollover • Auto gate delivery',
+                                  style: AppTypography.caption.copyWith(color: AppColors.textSecondary, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
+                        IconButton(
+                          onPressed: () => Navigator.of(modalContext).pop(),
+                          icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  const Divider(height: 1, color: Color(0xFFF3F4F6)),
+
+                  // Scrollable Pass Content
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                      children: [
+                        const ViralReferralBanner(),
+                        const SizedBox(height: 12),
+
+                        PassCard3D(
+                          tier: PassTierType.routine7Day,
+                          isSelected: _selectedTier == PassTierType.routine7Day,
+                          onTap: () {
+                            setState(() => _selectedTier = PassTierType.routine7Day);
+                            setModalState(() {});
+                            cartNotifier.selectPassTier(PassTierType.routine7Day);
+                          },
+                        ),
+                        PassCard3D(
+                          tier: PassTierType.power15Day,
+                          isSelected: _selectedTier == PassTierType.power15Day,
+                          onTap: () {
+                            setState(() => _selectedTier = PassTierType.power15Day);
+                            setModalState(() {});
+                            cartNotifier.selectPassTier(PassTierType.power15Day);
+                          },
+                        ),
+                        PassCard3D(
+                          tier: PassTierType.trial3Day,
+                          isSelected: _selectedTier == PassTierType.trial3Day,
+                          onTap: () {
+                            setState(() => _selectedTier = PassTierType.trial3Day);
+                            setModalState(() {});
+                            cartNotifier.selectPassTier(PassTierType.trial3Day);
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Tomorrow Combo preference
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'First Day Combo Choice',
+                              style: AppTypography.titleMedium.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF3F4F6),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'ROTATING DAILY',
+                                style: AppTypography.monoBadge.copyWith(fontSize: 9, color: AppColors.textSecondary),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'You can swap your combo daily in your Ticket Calendar',
+                          style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary, fontSize: 11),
+                        ),
+                        const SizedBox(height: 10),
+
+                        HeroComboCard(
+                          comboId: 'combo_a',
+                          tagTitle: 'OPTION A',
+                          title: 'Hot Set Dosa (2 pcs)',
+                          chefName: 'Sri Venkateshwara Hub',
+                          description: '2 Fluffy Set Dosas + Groundnut Chutney + Allam Chutney + Piping Sambar.',
+                          calories: '420',
+                          protein: '11g',
+                          carbs: '68g',
+                          comboIcon: Icons.breakfast_dining,
+                          isSelected: _selectedComboId == 'combo_a',
+                          onSelected: () {
+                            setState(() => _selectedComboId = 'combo_a');
+                            setModalState(() {});
+                          },
+                        ),
+
+                        HeroComboCard(
+                          comboId: 'combo_b',
+                          tagTitle: 'OPTION B',
+                          title: 'Steamed Idli (4 pcs) + Medu Vada (1 pc)',
+                          chefName: 'Amma Chethi Vanta',
+                          description: '4 Soft Steamed Idlis + 1 Crispy Medu Vada + Chutney + Drumstick Sambar.',
+                          calories: '390',
+                          protein: '14g',
+                          carbs: '62g',
+                          comboIcon: Icons.dinner_dining,
+                          isSelected: _selectedComboId == 'combo_b',
+                          onSelected: () {
+                            setState(() => _selectedComboId = 'combo_b');
+                            setModalState(() {});
+                          },
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        MorningAddonsSelector(
+                          selectedAddonIds: _selectedPassAddons,
+                          onToggleAddon: _onTogglePassAddon,
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // Proceed Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              cartNotifier.setOrderMode(OrderMode.subscriptionPass);
+                              cartNotifier.selectPassTier(_selectedTier);
+                              Navigator.of(modalContext).pop();
+                              context.push(RouteNames.passCheckout);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.zomatoRed,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 2,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Continue with ${_selectedTier.displayName}',
+                                  style: AppTypography.labelLarge.copyWith(color: Colors.white, fontWeight: FontWeight.bold),
+                                ),
+                                const SizedBox(width: 8),
+                                const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 

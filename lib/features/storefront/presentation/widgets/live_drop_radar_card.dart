@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
-import '../../../../core/utils/date_time_utils.dart';
 
 /// Live Morning Drop Radar (Reverse Engineered from Swiggy / Zomato live telemetry)
 /// Shows driver route proximity, stop progress, and bag token between 7:00 AM and 7:45 AM.
@@ -24,7 +22,6 @@ class LiveDropRadarCard extends StatefulWidget {
 class _LiveDropRadarCardState extends State<LiveDropRadarCard>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
-  bool _isExpanded = false;
 
   @override
   void initState() {
