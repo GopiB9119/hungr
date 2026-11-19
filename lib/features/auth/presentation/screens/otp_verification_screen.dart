@@ -72,14 +72,29 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
     if (otp.length == 6) {
       setState(() => _isSubmitting = true);
       HapticFeedback.mediumImpact();
-      ref.read(authProvider.notifier).login(
-            phone: widget.phoneNumber,
-            name: widget.userName,
+
+      ref.read(authProvider.notifier).verifyCode(
+            smsCode: otp,
+            onSuccess: () {
+              if (!mounted) return;
+              setState(() => _isSubmitting = false);
+              context.go(RouteNames.clusterSelection);
+            },
+            onError: (error) {
+              if (!mounted) return;
+              setState(() => _isSubmitting = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: AppColors.urgentCrimson,
+                  content: Text(
+                    error,
+                    style: AppTypography.labelLarge,
+                  ),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            },
           );
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (!mounted) return;
-        context.go(RouteNames.clusterSelection);
-      });
     } else {
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -320,20 +335,37 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                         ),
                         onPressed: () {
                           HapticFeedback.lightImpact();
-                          _startTimer();
-                          ScaffoldMessenger.of(context).clearSnackBars();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: const Color(0xFF1F2937),
-                              content: Text(
-                                'A new 6-digit OTP has been sent via SMS.',
-                                style: AppTypography.labelLarge.copyWith(color: Colors.white),
-                              ),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              duration: const Duration(seconds: 3),
-                            ),
-                          );
+                          ref.read(authProvider.notifier).requestOtp(
+                                phone: widget.phoneNumber,
+                                name: widget.userName,
+                                onSuccess: () {
+                                  if (!mounted) return;
+                                  _startTimer();
+                                  ScaffoldMessenger.of(context).clearSnackBars();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: const Color(0xFF1F2937),
+                                      content: Text(
+                                        'A new 6-digit OTP has been sent via SMS.',
+                                        style: AppTypography.labelLarge.copyWith(color: Colors.white),
+                                      ),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                                },
+                                onError: (error) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: AppColors.urgentCrimson,
+                                      content: Text(error, style: AppTypography.labelLarge),
+                                      behavior: SnackBarBehavior.floating,
+                                    ),
+                                  );
+                                },
+                              );
                         },
                       ),
               )

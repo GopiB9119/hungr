@@ -107,6 +107,76 @@ class TiffinShop {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'tagline': tagline,
+      'zone': zone,
+      'address': address,
+      'rating': rating,
+      'totalReviews': totalReviews,
+      'deliveryWindow': deliveryWindow,
+      'isPureVeg': isPureVeg,
+      'carouselImages': carouselImages,
+      'specialties': specialties,
+      'status': status.name,
+      'closureReason': closureReason,
+      'reopenDate': reopenDate,
+      'menuItems': menuItems.map((e) => e.toMap()).toList(),
+      'isPromoted': isPromoted,
+      'discountLabel': discountLabel,
+    };
+  }
+
+  factory TiffinShop.fromMap(Map<String, dynamic> map, {String? docId}) {
+    ShopStatus parseStatus(String? val) {
+      switch (val) {
+        case 'closedToday':
+          return ShopStatus.closedToday;
+        case 'closedTemporary':
+          return ShopStatus.closedTemporary;
+        case 'permanentlyClosed':
+          return ShopStatus.permanentlyClosed;
+        default:
+          return ShopStatus.open;
+      }
+    }
+
+    List<TiffinItem> items = [];
+    if (map['menuItems'] is List) {
+      items = (map['menuItems'] as List)
+          .map((e) => TiffinItem.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    } else if (map['dishes'] is List) {
+      items = (map['dishes'] as List)
+          .map((e) => TiffinItem.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+
+    return TiffinShop(
+      id: docId ?? map['id'] as String? ?? 'shop_${DateTime.now().millisecondsSinceEpoch}',
+      name: map['name'] as String? ?? 'Khammam Tiffin Hub',
+      tagline: map['tagline'] as String? ?? 'Hot fresh morning breakfast delivered to gate',
+      zone: map['zone'] as String? ?? 'Khammam Central',
+      address: map['address'] as String? ?? 'Khammam, Telangana',
+      rating: (map['rating'] as num?)?.toDouble() ?? 4.8,
+      totalReviews: (map['totalReviews'] as num?)?.toInt() ?? (map['reviews'] as num?)?.toInt() ?? 120,
+      deliveryWindow: map['deliveryWindow'] as String? ?? 'Drop at gate by 7:30 AM',
+      isPureVeg: map['isPureVeg'] as bool? ?? true,
+      carouselImages: (map['carouselImages'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [
+        'https://images.unsplash.com/photo-1668236543090-82eba5ee5976?w=800&auto=format&fit=crop&q=80',
+      ],
+      specialties: (map['specialties'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? ['Ghee Thatte Idli', 'Rayalaseema Karam Dosa'],
+      status: parseStatus(map['status'] as String?),
+      closureReason: map['closureReason'] as String?,
+      reopenDate: map['reopenDate'] as String?,
+      menuItems: items.isNotEmpty ? items : TiffinItem.standardMenuItems.take(4).toList(),
+      isPromoted: map['isPromoted'] as bool? ?? false,
+      discountLabel: map['discountLabel'] as String?,
+    );
+  }
+
   /// Default Khammam partner kitchens
   static List<TiffinShop> get standardShops => [
     TiffinShop(

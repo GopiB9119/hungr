@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/tiffin_shop_model.dart';
+import '../../../../core/services/firebase_service.dart';
 
 final tiffinShopsProvider =
     StateNotifierProvider<TiffinShopsViewModel, List<TiffinShop>>((ref) {
@@ -7,7 +10,30 @@ final tiffinShopsProvider =
 });
 
 class TiffinShopsViewModel extends StateNotifier<List<TiffinShop>> {
-  TiffinShopsViewModel() : super(TiffinShop.standardShops);
+  StreamSubscription<List<TiffinShop>>? _firestoreSubscription;
+
+  TiffinShopsViewModel() : super(TiffinShop.standardShops) {
+    _subscribeToLiveFirestoreCatalog();
+  }
+
+  /// Listens to real-time Cloud Firestore updates published by Web Admin
+  void _subscribeToLiveFirestoreCatalog() {
+    try {
+      _firestoreSubscription = FirebaseService.instance.streamTiffinShops().listen(
+        (remoteShops) {
+          if (remoteShops.isNotEmpty) {
+            state = remoteShops;
+            debugPrint('🔄 [TiffinShops] Synced ${remoteShops.length} live kitchens from Firestore');
+          }
+        },
+        onError: (err) {
+          debugPrint('⚠️ [TiffinShops] Firestore catalog stream notice: $err');
+        },
+      );
+    } catch (e) {
+      debugPrint('⚠️ [TiffinShops] Catalog init error: $e');
+    }
+  }
 
   /// Update shop status, optional closure reason and reopen date
   void updateShopStatus({
@@ -60,5 +86,11 @@ class TiffinShopsViewModel extends StateNotifier<List<TiffinShop>> {
     } catch (_) {
       return null;
     }
+  }
+
+  @override
+  void dispose() {
+    _firestoreSubscription?.cancel();
+    super.dispose();
   }
 }

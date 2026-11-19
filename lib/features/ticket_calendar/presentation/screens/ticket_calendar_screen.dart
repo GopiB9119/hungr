@@ -94,7 +94,7 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Driver marked delivered at your hostel gate. Guard verified parcel #$token.',
+              'Breakfast delivered at your hostel gate. Guard verified parcel #$token.',
               style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),

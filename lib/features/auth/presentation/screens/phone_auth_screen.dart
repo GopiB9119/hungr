@@ -1,21 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/widgets/obsidian_card.dart';
+import '../viewmodels/auth_viewmodel.dart';
 
-class PhoneAuthScreen extends StatefulWidget {
+class PhoneAuthScreen extends ConsumerStatefulWidget {
   const PhoneAuthScreen({super.key});
 
   @override
-  State<PhoneAuthScreen> createState() => _PhoneAuthScreenState();
+  ConsumerState<PhoneAuthScreen> createState() => _PhoneAuthScreenState();
 }
 
-class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
+class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   bool _isValidPhone = false;
@@ -45,12 +47,30 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
   void _submitPhone() {
     if (!_isValidPhone) return;
     HapticFeedback.lightImpact();
-    final cleanPhone = '+91 ${_phoneController.text.trim()}';
+    final cleanPhone = '+91${_phoneController.text.trim()}';
     final name = _nameController.text.trim();
-    context.push(RouteNames.otpVerify, extra: {
-      'phone': cleanPhone,
-      'name': name.isNotEmpty ? name : 'Vamsi Krishna',
-    });
+
+    ref.read(authProvider.notifier).requestOtp(
+      phone: cleanPhone,
+      name: name,
+      onSuccess: () {
+        if (!mounted) return;
+        context.push(RouteNames.otpVerify, extra: {
+          'phone': cleanPhone,
+          'name': name.isNotEmpty ? name : 'Hungr User',
+        });
+      },
+      onError: (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: AppColors.urgentCrimson,
+            content: Text(error, style: AppTypography.labelLarge),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -232,41 +252,54 @@ class _PhoneAuthScreenState extends State<PhoneAuthScreen> {
               const SizedBox(height: 24),
 
               // Primary CTA Button
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _isValidPhone ? AppColors.zomatoRed : const Color(0xFFE5E7EB),
-                    foregroundColor: _isValidPhone ? Colors.white : AppColors.textSubtle,
-                    elevation: _isValidPhone ? 4 : 0,
-                    shadowColor: AppColors.zomatoRedGlow,
-                    shape: const RoundedRectangleBorder(
-                      borderRadius: AppDimensions.radius16,
-                    ),
-                  ),
-                  onPressed: _isValidPhone ? _submitPhone : null,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Get Verification Code',
-                        style: AppTypography.labelLarge.copyWith(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.3,
-                          color: _isValidPhone ? Colors.white : AppColors.textSubtle,
+              Consumer(
+                builder: (context, ref, _) {
+                  final authState = ref.watch(authProvider);
+                  final isBusy = authState.isLoading;
+
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: (_isValidPhone && !isBusy) ? AppColors.zomatoRed : const Color(0xFFE5E7EB),
+                        foregroundColor: (_isValidPhone && !isBusy) ? Colors.white : AppColors.textSubtle,
+                        elevation: (_isValidPhone && !isBusy) ? 4 : 0,
+                        shadowColor: AppColors.zomatoRedGlow,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: AppDimensions.radius16,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Icon(
-                        Icons.arrow_forward_rounded,
-                        size: 18,
-                        color: _isValidPhone ? Colors.white : AppColors.textSubtle,
-                      ),
-                    ],
-                  ),
-                ),
+                      onPressed: (_isValidPhone && !isBusy) ? _submitPhone : null,
+                      child: isBusy
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Get Verification Code',
+                                  style: AppTypography.labelLarge.copyWith(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.3,
+                                    color: _isValidPhone ? Colors.white : AppColors.textSubtle,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Icon(
+                                  Icons.arrow_forward_rounded,
+                                  size: 18,
+                                  color: _isValidPhone ? Colors.white : AppColors.textSubtle,
+                                ),
+                              ],
+                            ),
+                    ),
+                  );
+                },
               )
                   .animate()
                   .fadeIn(delay: 250.ms, duration: 400.ms),

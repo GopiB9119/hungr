@@ -52,8 +52,8 @@ android {
         applicationId "com.hungr.app"
         minSdkVersion flutter.minSdkVersion
         targetSdk 36
-        versionCode flutterVersionCode.toInteger()
-        versionName flutterVersionName
+        versionCode 11
+        versionName "1.0.10"
     }
 
     signingConfigs {
@@ -93,4 +93,8 @@ dependencies {
 
 flutter {
     source '../..'
+}
+
+if (file('google-services.json').exists()) {
+    apply plugin: 'com.google.gms.google-services'
 }

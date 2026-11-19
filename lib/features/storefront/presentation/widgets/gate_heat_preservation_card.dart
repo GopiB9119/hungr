@@ -477,7 +477,7 @@ class _GateHeatPreservationCardState extends State<GateHeatPreservationCard>
             ),
             const SizedBox(height: 12),
             Text(
-              'Driver marked delivered at ${widget.clusterName}. Security Guard was handed the parcel.',
+              'Parcel delivered at ${widget.clusterName} security gate. Security Guard has received the order.',
               style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),

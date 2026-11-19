@@ -9,6 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Firebase Compatibility SDKs for Live Firestore Sync -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="firebase-config.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -22,6 +27,9 @@
       </div>
     </div>
     <div class="nav-actions">
+      <div class="time-pill" id="firebase-status-pill" style="background: #064E3B; color: #34D399; font-weight: 700; border: 1px solid #059669;">
+        🟢 Cloud Firestore Live
+      </div>
       <div class="status-indicator">
         <span class="pulse-dot"></span>
         <span>KHAMMAM MORNING OPS LIVE</span>
@@ -82,6 +90,9 @@
     <button class="tab-btn active" data-tab="shops-tab">
       <span>🏪</span> Partner Tiffin Kitchens & Menus
     </button>
+    <button class="tab-btn" data-tab="offers-tab">
+      <span>🏷️</span> Offers, Discounts & Banners
+    </button>
     <button class="tab-btn" data-tab="zones-tab">
       <span>🗺️</span> Khammam 4-Zone Order Heatmap
     </button>
@@ -99,10 +110,28 @@
           <h2 class="section-title">Khammam Partner Tiffin Centers</h2>
           <p class="section-subtitle">Manage daily open/closed status, holiday schedules, closure reasons, and dish pricing.</p>
         </div>
-        <button class="btn btn-primary" onclick="openAddShopModal()">+ Onboard New Kitchen</button>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-secondary" onclick="seedFirestoreDefaults()" title="Push default Khammam kitchen data to Firebase Cloud Firestore">🚀 Seed to Firestore</button>
+          <button class="btn btn-primary" onclick="openAddShopModal()">+ Onboard New Kitchen</button>
+        </div>
       </div>
 
       <div class="shops-grid" id="shops-container">
+        <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- TAB 2: OFFERS, PROMO CODES & BANNERS -->
+    <section id="offers-tab" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Promotional Offers & Storefront Banners</h2>
+          <p class="section-subtitle">Create discount coupons, festive offers, and announcement banners shown live on customer apps.</p>
+        </div>
+        <button class="btn btn-primary" onclick="openAddOfferModal()">+ Create New Promo Offer</button>
+      </div>
+
+      <div class="shops-grid" id="offers-container">
         <!-- Rendered by JavaScript -->
       </div>
     </section>
@@ -234,6 +263,46 @@
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddShopModal()">Cancel</button>
         <button class="btn btn-primary" onclick="saveNewShop()">Onboard Kitchen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD OFFER MODAL -->
+  <div class="modal-overlay" id="add-offer-modal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Create Promo Offer / Banner</h3>
+        <button class="modal-close" onclick="closeAddOfferModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Coupon Code / Promo Title:</label>
+          <input type="text" id="offer-code" placeholder="e.g. HUNGR20 or WELCOME50">
+        </div>
+        <div class="form-group">
+          <label>Headline Description (Shown on mobile banner):</label>
+          <input type="text" id="offer-description" placeholder="e.g. Flat ₹20 Off on 5-Day Morning Tiffin Pass">
+        </div>
+        <div class="form-group">
+          <label>Discount Type:</label>
+          <select id="offer-type">
+            <option value="flat">Flat Rupee Discount (₹)</option>
+            <option value="percentage">Percentage Discount (%)</option>
+            <option value="freeDelivery">Free Morning Gate Delivery</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Discount Value (₹ or %):</label>
+          <input type="number" id="offer-value" placeholder="e.g. 20" value="20">
+        </div>
+        <div class="form-group">
+          <label>Minimum Order / Pass Value (₹):</label>
+          <input type="number" id="offer-min-order" placeholder="e.g. 199" value="199">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeAddOfferModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveNewOffer()">Publish to App</button>
       </div>
     </div>
   </div>

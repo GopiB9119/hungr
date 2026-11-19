@@ -104,5 +104,22 @@ service cloud.firestore {
       allow read: if isAuthenticated() && isAdmin();
       allow write: if isAdmin();
     }
+
+    // Partner Tiffin Kitchens & Menus (Live sync with Web Admin)
+    match /tiffin_shops/{shopId} {
+      allow read: if true; // Publicly readable for customer apps
+      allow write: if isAuthenticated() && (isAdmin() || request.auth.token.role == 'partner');
+
+      match /dishes/{dishId} {
+        allow read: if true;
+        allow write: if isAuthenticated() && (isAdmin() || request.auth.token.role == 'partner');
+      }
+    }
+
+    // Promotional Offers & Home Banners
+    match /offers/{offerId} {
+      allow read: if true; // Publicly readable for discounts & banners
+      allow write: if isAuthenticated() && isAdmin();
+    }
   }
 }

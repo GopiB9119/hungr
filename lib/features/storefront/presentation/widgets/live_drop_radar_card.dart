@@ -146,7 +146,7 @@ class _LiveDropRadarCardState extends State<LiveDropRadarCard>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Driver Ramesh is dropping at Stop 2',
+                            'Morning Gate Delivery En Route',
                             style: AppTypography.titleSmall.copyWith(
                               fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
@@ -155,7 +155,7 @@ class _LiveDropRadarCardState extends State<LiveDropRadarCard>
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Next Stop: ${widget.clusterName} • ETA ~7 mins (07:38 AM)',
+                            'Dropping at: ${widget.clusterName} • Target Gate Drop: 07:30 AM',
                             style: AppTypography.bodySmall.copyWith(
                               color: const Color(0xFF1D4ED8),
                               fontWeight: FontWeight.w600,

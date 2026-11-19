@@ -3,9 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/services/firebase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase (Auth, Firestore, Cloud Functions)
+  await FirebaseService.instance.init();
 
   // System UI overlay configuration for Android 15 Edge-to-Edge and Light Theme
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);

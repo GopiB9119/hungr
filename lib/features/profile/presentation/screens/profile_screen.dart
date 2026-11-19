@@ -292,7 +292,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   SwitchListTile(
                     secondary: const Icon(Icons.notifications_active_outlined, color: AppColors.textCrispWhite),
                     title: Text('WhatsApp 7:00 AM Delivery Ping', style: AppTypography.titleMedium),
-                    subtitle: Text('Instant dispatch alert when driver arrives at your gate', style: AppTypography.bodySmall),
+                    subtitle: Text('Instant WhatsApp alert when breakfast arrives at your gate', style: AppTypography.bodySmall),
                     value: _deliveryPingEnabled,
                     activeColor: AppColors.zomatoRed,
                     onChanged: (val) {

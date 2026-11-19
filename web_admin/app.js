@@ -191,12 +191,122 @@ const DISPATCH_FEED = [
 ];
 
 // 2. State & Storage Engine
+const DEFAULT_OFFERS = [
+  {
+    id: 'offer_hungr20',
+    code: 'HUNGR20',
+    description: 'Flat ₹20 Off on 5-Day & 10-Day Morning Tiffin Passes',
+    type: 'flat',
+    value: 20,
+    minOrder: 199,
+    isActive: true,
+  },
+  {
+    id: 'offer_freedel',
+    code: 'FREEDEL',
+    description: 'Free Morning Gate Drop on all subscription passes',
+    type: 'freeDelivery',
+    value: 0,
+    minOrder: 299,
+    isActive: true,
+  },
+  {
+    id: 'offer_student50',
+    code: 'STUDENT50',
+    description: '₹50 Cashback voucher for Khammam College & Hostel Students',
+    type: 'flat',
+    value: 50,
+    minOrder: 399,
+    isActive: true,
+  }
+];
+
 let shops = JSON.parse(localStorage.getItem('hungr_admin_shops')) || DEFAULT_SHOPS;
+let offers = JSON.parse(localStorage.getItem('hungr_admin_offers')) || DEFAULT_OFFERS;
 
 function saveShopsToStorage() {
   localStorage.setItem('hungr_admin_shops', JSON.stringify(shops));
   renderShops();
   updateKPIs();
+}
+
+function saveOffersToStorage() {
+  localStorage.setItem('hungr_admin_offers', JSON.stringify(offers));
+  renderOffers();
+}
+
+// Cloud Firestore Real-time Sync Engine
+function initFirestoreSync() {
+  const pill = document.getElementById('firebase-status-pill');
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    if (pill) {
+      pill.innerHTML = '🟢 Cloud Firestore Live';
+      pill.style.background = '#064E3B';
+      pill.style.color = '#34D399';
+    }
+    // Real-time synchronization for tiffin kitchens & menus
+    db.collection('tiffin_shops').onSnapshot(snapshot => {
+      if (!snapshot.empty) {
+        shops = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        localStorage.setItem('hungr_admin_shops', JSON.stringify(shops));
+        renderShops();
+        updateKPIs();
+        console.log('🔄 [Web Admin] Real-time kitchens synced from Firestore:', shops.length);
+      }
+    }, err => {
+      console.warn('Firestore tiffin_shops stream warning:', err);
+    });
+
+    // Real-time synchronization for offers & banners
+    db.collection('offers').onSnapshot(snapshot => {
+      if (!snapshot.empty) {
+        offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        localStorage.setItem('hungr_admin_offers', JSON.stringify(offers));
+        renderOffers();
+        console.log('🔄 [Web Admin] Real-time offers synced from Firestore:', offers.length);
+      }
+    }, err => {
+      console.warn('Firestore offers stream warning:', err);
+    });
+  } else {
+    if (pill) {
+      pill.innerHTML = '🟡 Local Mode (Set keys in firebase-config.js)';
+      pill.style.background = '#78350F';
+      pill.style.color = '#FCD34D';
+    }
+  }
+}
+
+async function seedFirestoreDefaults() {
+  if (typeof isFirebaseAvailable === 'undefined' || !isFirebaseAvailable || !db) {
+    alert('Please enter your real Firebase web configuration in web_admin/firebase-config.js before pushing live data.');
+    return;
+  }
+
+  const btn = event ? event.target : null;
+  const originalText = btn ? btn.innerText : '';
+  if (btn) btn.innerText = '⏳ Pushing to Cloud...';
+
+  try {
+    const batch = db.batch();
+    DEFAULT_SHOPS.forEach(shop => {
+      const ref = db.collection('tiffin_shops').doc(shop.id);
+      batch.set(ref, shop, { merge: true });
+    });
+
+    DEFAULT_OFFERS.forEach(offer => {
+      const ref = db.collection('offers').doc(offer.id);
+      batch.set(ref, offer, { merge: true });
+    });
+
+    await batch.commit();
+    alert('🎉 Successfully seeded 4 Khammam partner kitchens, menus, and live offers to Cloud Firestore!\nYour mobile app is now receiving live cloud data!');
+  } catch (e) {
+    console.error('Seed error:', e);
+    alert('Failed to seed Firestore: ' + e.message);
+  } finally {
+    if (btn) btn.innerText = originalText;
+  }
 }
 
 // 3. KPI Updates
@@ -406,6 +516,13 @@ function saveShopChanges() {
 
   saveShopsToStorage();
   broadcastKitchenUpdate('UPDATE_SHOP_STATUS_AND_PRICES', shop);
+
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    db.collection('tiffin_shops').doc(shop.id).set(shop, { merge: true })
+      .then(() => console.log('✅ Real-time Firestore sync complete for', shop.id))
+      .catch(e => console.error('Firestore save error:', e));
+  }
+
   closeEditShopModal();
   alert(`Changes saved for ${shop.name}! Status: ${shop.status.toUpperCase()}`);
 }
@@ -450,8 +567,129 @@ function saveNewShop() {
   shops.push(newShop);
   saveShopsToStorage();
   broadcastKitchenUpdate('ADD_NEW_SHOP', newShop);
+
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    db.collection('tiffin_shops').doc(newShop.id).set(newShop)
+      .then(() => console.log('✅ New kitchen synced to Cloud Firestore:', newShop.id))
+      .catch(e => console.error('Firestore kitchen save error:', e));
+  }
+
   closeAddShopModal();
   alert(`Onboarded ${name} successfully!`);
+}
+
+// ==========================================
+// OFFERS & PROMO CODES MANAGEMENT
+// ==========================================
+function renderOffers() {
+  const container = document.getElementById('offers-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (offers.length === 0) {
+    container.innerHTML = '<div style="color: #9CA3AF; grid-column: 1/-1; text-align: center; padding: 40px;">No promotional offers currently active. Click "+ Create New Promo Offer" to add one.</div>';
+    return;
+  }
+
+  offers.forEach(offer => {
+    const card = document.createElement('div');
+    card.className = 'shop-card';
+    card.style.background = '#1E293B';
+    card.style.border = offer.isActive ? '1px solid #10B981' : '1px solid #475569';
+    card.style.padding = '18px';
+    card.style.borderRadius = '14px';
+
+    card.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+        <div>
+          <span style="font-family: monospace; font-size: 16px; font-weight: 800; color: #F59E0B; background: #451A03; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px;">${offer.code}</span>
+          <h4 style="margin: 10px 0 4px; font-size: 15px; color: #FFFFFF; font-weight: 700;">${offer.description}</h4>
+          <p style="margin: 0; font-size: 12px; color: #94A3B8;">Type: <strong>${offer.type === 'flat' ? '₹' + offer.value + ' Flat Off' : offer.type === 'percentage' ? offer.value + '% Off' : 'Free Gate Drop'}</strong> • Min Order: ₹${offer.minOrder}</p>
+        </div>
+        <span style="font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; background: ${offer.isActive ? '#064E3B' : '#334155'}; color: ${offer.isActive ? '#34D399' : '#94A3B8'};">
+          ${offer.isActive ? 'ACTIVE ON APP' : 'PAUSED'}
+        </span>
+      </div>
+      <div style="display: flex; gap: 8px; margin-top: 14px; border-top: 1px solid #334155; padding-top: 12px;">
+        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" onclick="toggleOfferStatus('${offer.id}')">
+          ${offer.isActive ? '⏸️ Pause Offer' : '▶️ Activate'}
+        </button>
+        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #EF4444; border-color: #EF4444;" onclick="deleteOffer('${offer.id}')">
+          🗑️ Delete
+        </button>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function openAddOfferModal() {
+  const m = document.getElementById('add-offer-modal');
+  if (m) m.classList.add('open');
+}
+
+function closeAddOfferModal() {
+  const m = document.getElementById('add-offer-modal');
+  if (m) m.classList.remove('open');
+}
+
+function saveNewOffer() {
+  const code = document.getElementById('offer-code').value.trim().toUpperCase();
+  const desc = document.getElementById('offer-description').value.trim();
+  const type = document.getElementById('offer-type').value;
+  const value = parseInt(document.getElementById('offer-value').value) || 0;
+  const minOrder = parseInt(document.getElementById('offer-min-order').value) || 0;
+
+  if (!code || !desc) {
+    alert('Please enter a coupon code and description.');
+    return;
+  }
+
+  const newOffer = {
+    id: `offer_${Date.now()}`,
+    code,
+    description: desc,
+    type,
+    value,
+    minOrder,
+    isActive: true,
+  };
+
+  offers.push(newOffer);
+  saveOffersToStorage();
+
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    db.collection('offers').doc(newOffer.id).set(newOffer)
+      .then(() => console.log('✅ New offer synced to Cloud Firestore:', newOffer.id))
+      .catch(e => console.error('Firestore offer save error:', e));
+  }
+
+  closeAddOfferModal();
+  alert(`Promo code ${code} published live to mobile storefront!`);
+}
+
+function toggleOfferStatus(offerId) {
+  const offer = offers.find(o => o.id === offerId);
+  if (!offer) return;
+
+  offer.isActive = !offer.isActive;
+  saveOffersToStorage();
+
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    db.collection('offers').doc(offer.id).update({ isActive: offer.isActive })
+      .catch(e => console.error('Error toggling offer:', e));
+  }
+}
+
+function deleteOffer(offerId) {
+  if (!confirm('Are you sure you want to delete this offer?')) return;
+  offers = offers.filter(o => o.id !== offerId);
+  saveOffersToStorage();
+
+  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+    db.collection('offers').doc(offerId).delete()
+      .catch(e => console.error('Error deleting offer from Firestore:', e));
+  }
 }
 
 // Driver Manifest Modal Controls for Operations Web App
@@ -524,6 +762,10 @@ document.querySelectorAll('.tab-btn').forEach(button => {
     button.classList.add('active');
     const targetId = button.getAttribute('data-tab');
     document.getElementById(targetId).classList.add('active');
+
+    if (targetId === 'offers-tab') {
+      renderOffers();
+    }
 
     if (targetId === 'zones-tab' && khammamMap) {
       setTimeout(() => khammamMap.invalidateSize(), 200);
@@ -757,10 +999,12 @@ function updateClock() {
 // Initialize on Load
 window.addEventListener('DOMContentLoaded', () => {
   renderShops();
+  renderOffers();
   renderZones();
   renderDispatchFeed();
   updateKPIs();
   updateClock();
   initKhammamMap();
+  initFirestoreSync();
   setInterval(updateClock, 1000);
 });

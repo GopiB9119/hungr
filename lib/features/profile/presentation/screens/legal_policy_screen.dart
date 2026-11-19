@@ -75,7 +75,7 @@ class LegalPolicyScreen extends StatelessWidget {
               title: '3. Gate Drop & Transfer of Risk',
               content:
                   'Deliveries are executed between 07:30 AM and 08:30 AM at your registered cluster drop point (hostel gate or watchman desk). '
-                  'Photo upload by our route driver constitutes conclusive proof of delivery. '
+                  'Photo upload at your drop gate constitutes conclusive proof of delivery. '
                   'Hungr is not responsible for lost packages left unattended past the 2-minute gate drop.',
             ),
             const SizedBox(height: AppDimensions.p12),
