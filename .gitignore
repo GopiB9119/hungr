@@ -42,6 +42,8 @@ migrate_working_dir/
 **/android/build/
 **/build/
 **/android/**/GeneratedPluginRegistrant.java
+**/android/app/google-services.json
+**/google-services.json
 
 # iOS/macOS related
 **/ios/**/*.mode1v3

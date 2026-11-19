@@ -1,19 +1,16 @@
 // ==============================================================================
 // HUNGR OPERATIONS COMMAND - FIREBASE WEB CONFIGURATION
 // ==============================================================================
-// To connect your live Firebase project:
-// 1. Go to Firebase Console -> Project Settings -> General -> Your apps -> Web app
-// 2. Paste your web app configuration keys below.
-// 3. Deploy anytime via: firebase deploy --only hosting
+// Connected to Firebase Project: hungr-6b059
 // ==============================================================================
 
 const firebaseConfig = {
-  apiKey: "AIzaSyYOUR_API_KEY_HERE",
-  authDomain: "hungr-app.firebaseapp.com",
-  projectId: "hungr-app",
-  storageBucket: "hungr-app.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: "AIzaSyCgbmV7pyFHS9qcDjJFdxdmcDKOaE6uDBw",
+  authDomain: "hungr-6b059.firebaseapp.com",
+  projectId: "hungr-6b059",
+  storageBucket: "hungr-6b059.firebasestorage.app",
+  messagingSenderId: "746415225267",
+  appId: "1:746415225267:web:hungrweboperations"
 };
 
 let isFirebaseAvailable = false;
@@ -32,7 +29,7 @@ try {
     db = firebase.firestore();
     auth = firebase.auth();
     isFirebaseAvailable = true;
-    console.log('✅ [Hungr Web Admin] Firebase Cloud Firestore initialized successfully!');
+    console.log('✅ [Hungr Web Admin] Firebase Cloud Firestore initialized successfully for hungr-6b059!');
   } else {
     console.warn('⚠️ [Hungr Web Admin] Running in Local Cache Mode. Set your Firebase Web Config in firebase-config.js to activate live cloud sync.');
   }
