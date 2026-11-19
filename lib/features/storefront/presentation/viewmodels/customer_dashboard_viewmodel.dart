@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/business_rules.dart';
 import '../../../../core/services/local_storage_service.dart';
 import '../../../../core/utils/date_time_utils.dart';
 import '../../../onboarding/domain/cluster_model.dart';
@@ -8,7 +7,7 @@ import '../widgets/pass_card_3d.dart';
 
 class CustomerDashboardState {
   final bool hasActivePass;
-  final PassTierType activeTier;
+  final PassTierType? activeTier;
   final int mealsRemaining;
   final int totalMeals;
   final String tomorrowCombo; // 'A' or 'B'
@@ -55,16 +54,20 @@ class CustomerDashboardState {
 }
 
 class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
-  CustomerDashboardViewModel()
-      : super(
-          CustomerDashboardState(
-            hasActivePass: true,
-            activeTier: PassTierType.routine7Day,
-            mealsRemaining: 5,
-            totalMeals: 7,
+  final LocalStorageService _storage;
+  bool _clusterConfirmed = false;
+
+  CustomerDashboardViewModel({LocalStorageService? storage})
+      : _storage = storage ?? LocalStorageService.instance,
+        super(
+          const CustomerDashboardState(
+            hasActivePass: false,
+            activeTier: null,
+            mealsRemaining: 0,
+            totalMeals: 0,
             tomorrowCombo: 'A',
-            activeAddons: {BusinessRules.addonBoiledEggsId},
-            selectedCluster: const DeliveryCluster(
+            activeAddons: {},
+            selectedCluster: DeliveryCluster(
               id: 'cluster_01',
               name: 'Sri Sai Boys Hostel Gate',
               addressZone: 'Bypass Road, Khammam',
@@ -74,138 +77,20 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
               latitude: 17.2473,
               longitude: 80.1514,
             ),
-            tickets: _generateInitialTickets(),
+            tickets: [],
             isRenewAlertActive: false,
           ),
         ) {
-    _loadPersistedState();
+    _loadSavedCluster();
   }
 
-  Future<void> _loadPersistedState() async {
-    final savedCluster = await LocalStorageService.instance.getSavedCluster();
-    if (savedCluster != null) {
-      state = state.copyWith(
-        selectedCluster: DeliveryCluster(
-          id: savedCluster['id']!,
-          name: savedCluster['name']!,
-          addressZone: savedCluster['zone']!,
-          landmark: savedCluster['landmark']!,
-          currentSubscribers: 36,
-          maxCapacity: 50,
-          latitude: 17.2473,
-          longitude: 80.1514,
-        ),
-      );
+  // A gate preference can be restored locally. Pass counts from older clients
+  // came from simulated purchases, not an account's verified entitlements.
+  Future<void> _loadSavedCluster() async {
+    final gate = await _storage.getSavedGate();
+    if (mounted && !_clusterConfirmed && gate != null) {
+      state = state.copyWith(selectedCluster: gate);
     }
-
-    final savedPass = await LocalStorageService.instance.getSavedPassState();
-    if (savedPass != null) {
-      PassTierType tier = PassTierType.routine7Day;
-      if (savedPass['tier'] == 'trial3Day') tier = PassTierType.trial3Day;
-      if (savedPass['tier'] == 'power15Day') tier = PassTierType.power15Day;
-
-      state = state.copyWith(
-        hasActivePass: savedPass['hasActivePass'] as bool,
-        activeTier: tier,
-        mealsRemaining: savedPass['mealsRemaining'] as int,
-        totalMeals: savedPass['totalMeals'] as int,
-        tomorrowCombo: savedPass['tomorrowCombo'] as String,
-      );
-    }
-  }
-
-  static const List<String> khammamSpecialties = [
-    'Rayalaseema Set Dosa & Coconut Chutney',
-    'Steaming Ghee Thatte Idlis + Medu Vada',
-    'Homestyle Poori Masala (Amma Chethi Vanta)',
-    'MLA Pesarattu Upma & Ginger Pachadi',
-    'Crisp Mysore Bonda & Drumstick Sambar',
-    'Karnataka Udupi Ghee Roast Dosa',
-  ];
-
-  static List<MealTicket> _generateInitialTickets() {
-    final targetStart = DateTimeUtils.targetDeliveryDate();
-
-    return List<MealTicket>.generate(5, (index) {
-      final deliveryDate = targetStart.add(Duration(days: index));
-      final specialty = khammamSpecialties[index % khammamSpecialties.length];
-      final token = DateTimeUtils.generateBagToken('Sri Sai Boys Hostel Gate', index + 4);
-
-      return MealTicket(
-        ticketId: 't_00${index + 1}',
-        passId: 'pass_7d_user1',
-        userId: 'user_khammam_01',
-        clusterId: 'cluster_01',
-        clusterName: 'Sri Sai Boys Hostel Gate',
-        deliveryDate: deliveryDate,
-        comboSelection: index % 2 == 0 ? 'A' : 'B',
-        addOns: index == 0 ? const [BusinessRules.addonBoiledEggsId] : const [],
-        slot: MealSlotType.morning,
-        status: TicketStatusType.scheduled,
-        bagToken: token,
-        specialtyName: specialty,
-        companionMeals: 0,
-      );
-    });
-  }
-
-  void activateNewPass({
-    required PassTierType tier,
-    required String combo,
-    required Set<String> addons,
-    bool autoRotateSpecialties = true,
-    int companionMeals = 0,
-    String? bagToken,
-  }) {
-    int total = 7;
-    if (tier == PassTierType.trial3Day) total = 3;
-    if (tier == PassTierType.power15Day) total = 15;
-
-    final targetStart = DateTimeUtils.targetDeliveryDate();
-    final baseToken = bagToken ?? DateTimeUtils.generateBagToken(state.selectedCluster.name, 7);
-
-    final generatedTickets = List<MealTicket>.generate(total, (index) {
-      final deliveryDate = targetStart.add(Duration(days: index));
-      final ticketCombo = (index % 2 == 0) ? combo : (combo == 'A' ? 'B' : 'A');
-      final specialty = autoRotateSpecialties
-          ? khammamSpecialties[index % khammamSpecialties.length]
-          : (ticketCombo == 'A' ? 'Steaming Ghee Idli + Vada' : 'Crisp Masala Dosa');
-
-      return MealTicket(
-        ticketId: 't_${DateTime.now().millisecondsSinceEpoch}_$index',
-        passId: 'pass_${tier.name}_user1',
-        userId: 'user_khammam_01',
-        clusterId: state.selectedCluster.id,
-        clusterName: state.selectedCluster.name,
-        deliveryDate: deliveryDate,
-        comboSelection: ticketCombo,
-        addOns: addons.toList(),
-        slot: MealSlotType.morning,
-        status: TicketStatusType.scheduled,
-        bagToken: baseToken,
-        specialtyName: specialty,
-        companionMeals: index == 0 ? companionMeals : 0,
-      );
-    });
-
-    state = state.copyWith(
-      hasActivePass: true,
-      activeTier: tier,
-      totalMeals: total,
-      mealsRemaining: total,
-      tomorrowCombo: combo,
-      activeAddons: addons,
-      tickets: generatedTickets,
-      isRenewAlertActive: false,
-    );
-
-    LocalStorageService.instance.savePassState(
-      hasActivePass: true,
-      tier: tier.name,
-      mealsRemaining: total,
-      totalMeals: total,
-      tomorrowCombo: combo,
-    );
   }
 
   bool togglePauseTicket(String ticketId) {
@@ -311,13 +196,9 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
   }
 
   void updateCluster(DeliveryCluster newCluster) {
+    // Auth has persisted this gate. A startup read may still be in flight.
+    _clusterConfirmed = true;
     state = state.copyWith(selectedCluster: newCluster);
-    LocalStorageService.instance.saveCluster(
-      id: newCluster.id,
-      name: newCluster.name,
-      zone: newCluster.addressZone,
-      landmark: newCluster.landmark,
-    );
   }
 }
 

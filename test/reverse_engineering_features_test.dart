@@ -9,68 +9,98 @@ import 'package:hungr/features/storefront/data/shop_sync_service.dart';
 
 void main() {
   group('1. Cutoff Rollover Engine & Bag Token Generator', () {
-    test('targetDeliveryDate rolls over past 21:00 IST cutoff', () {
-      final beforeCutoff = DateTime(2026, 11, 12, 18, 0); // 6:00 PM
-      final afterCutoff = DateTime(2026, 11, 12, 21, 15); // 9:15 PM
-
-      expect(DateTimeUtils.isAfterCutoffToday(testTime: beforeCutoff), isFalse);
-      expect(DateTimeUtils.isAfterCutoffToday(testTime: afterCutoff), isTrue);
-
-      final targetBefore = DateTimeUtils.targetDeliveryDate(testTime: beforeCutoff);
-      expect(targetBefore.day, equals(13)); // Tomorrow
-
-      final targetAfter = DateTimeUtils.targetDeliveryDate(testTime: afterCutoff);
-      expect(targetAfter.day, equals(14)); // Day after tomorrow rollover
+    test('delivery and countdown roll over at exactly 21:00 IST', () {
+      final cutoff = DateTime.utc(2026, 12, 31, 15, 30);
+      final before = cutoff.subtract(const Duration(seconds: 1));
+      expect(DateTimeUtils.isAfterCutoffToday(instant: before), isFalse);
+      expect(
+        DateTimeUtils.timeRemainingUntilCutoff(instant: before),
+        const Duration(seconds: 1),
+      );
+      expect(
+        DateTimeUtils.targetDeliveryDate(instant: before),
+        DateTime(2027, 1, 1),
+      );
+      expect(DateTimeUtils.isAfterCutoffToday(instant: cutoff), isTrue);
+      expect(
+        DateTimeUtils.targetDeliveryDate(instant: cutoff),
+        DateTime(2027, 1, 2),
+      );
+      expect(
+        DateTimeUtils.nextCutoffIst(instant: cutoff),
+        DateTime.utc(2027, 1, 1, 15, 30),
+      );
+      final midnightInIndia = DateTime.utc(2027, 1, 1, 18, 30);
+      expect(
+        DateTimeUtils.targetDeliveryDate(instant: midnightInIndia),
+        DateTime(2027, 1, 3),
+      );
     });
 
-    test('generateBagToken generates 4-6 char token with cluster prefix', () {
-      final tokenSai = DateTimeUtils.generateBagToken(clusterName: 'Sri Sai PG', orderId: 'ord_12345');
-      expect(tokenSai.startsWith('#SS-'), isTrue);
+    test('urgency starts at 20:30 IST, not one second earlier', () {
+      final start = DateTime.utc(2026, 11, 12, 15);
+      expect(
+        DateTimeUtils.isCutoffUrgent(
+          instant: start.subtract(const Duration(seconds: 1)),
+        ),
+        isFalse,
+      );
+      expect(DateTimeUtils.isCutoffUrgent(instant: start), isTrue);
+    });
 
-      final tokenKakatiya = DateTimeUtils.generateBagToken(clusterName: 'Kakatiya Girls Hostel', orderId: 'ord_98765');
-      expect(tokenKakatiya.startsWith('#KG-'), isTrue);
+    test('bag labels include cluster initials and a two-digit bag number', () {
+      expect(DateTimeUtils.generateBagToken('Sri Sai PG', 3), '#SS-04');
+      expect(
+        DateTimeUtils.generateBagToken('Kakatiya Girls Hostel', 8),
+        '#KG-09',
+      );
     });
   });
 
   group('2. WhatsApp Deep Link & Gate Alert Formatter', () {
-    test('generateTicketDeepLink and generateDropDeepLink format valid custom schemes', () {
-      final ticketLink = WhatsAppLinkHelper.generateTicketDeepLink('tkt_999');
+    test('ticket and drop links use the app scheme', () {
+      final ticketLink = WhatsAppLinkHelper.getTicketDeepLink('tkt_999');
       expect(ticketLink, equals('hungr://ticket/tkt_999'));
 
-      final dropLink = WhatsAppLinkHelper.generateDropDeepLink('#SS-04');
+      final dropLink = WhatsAppLinkHelper.getBagTokenDeepLink('#SS-04');
       expect(dropLink, equals('hungr://drop/SS-04'));
     });
 
-    test('generateGateDropWhatsAppMessage includes bag token, location, and deep link', () {
-      final message = WhatsAppLinkHelper.generateGateDropWhatsAppMessage(
+    test('gate message includes recipient, bag, shelf and ticket link', () {
+      final message = WhatsAppLinkHelper.formatGateDropMessage(
         customerName: 'Rahul',
         bagToken: '#SS-04',
         clusterName: 'Sri Sai PG Watchman Desk',
-        driverName: 'Ramesh Goud',
+        shelfDetail: 'Shelf 4',
         ticketId: 'tkt_12345',
       );
 
       expect(message.contains('#SS-04'), isTrue);
       expect(message.contains('Sri Sai PG Watchman Desk'), isTrue);
-      expect(message.contains('Ramesh Goud'), isTrue);
+      expect(message, contains('Rahul'));
+      expect(message, contains('Shelf 4'));
       expect(message.contains('hungr://ticket/tkt_12345'), isTrue);
     });
   });
 
   group('3. Cart & Roommate Companion Meal Engine', () {
-    test('companion meal additions update total and calculate fuel-consolidation savings', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'companion meal additions update total and calculate fuel-consolidation savings',
+      () {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      final cartNotifier = container.read(cartViewModelProvider.notifier);
-      expect(container.read(cartProvider).roommateMealCount, equals(0));
+        final cartNotifier = container.read(cartViewModelProvider.notifier);
+        expect(container.read(cartProvider).roommateMealCount, equals(0));
 
-      cartNotifier.setRoommateMeals(2);
-      final state = container.read(cartProvider);
-      expect(state.roommateMealCount, equals(2));
-      expect(state.roommateCompanionTotal, equals(90)); // 2 * 45
-      expect(state.roommateCompanionSavings, equals(28)); // 2 * 14
-    });
+        cartNotifier.addRoommateMeal();
+        cartNotifier.addRoommateMeal();
+        final state = container.read(cartProvider);
+        expect(state.roommateMealCount, equals(2));
+        expect(state.totalPayable, equals(90)); // 2 * 45
+        expect(state.savingsAmount, equals(28)); // 2 * 14
+      },
+    );
 
     test('toggleAutoRotatePassMenu updates state correctly', () {
       final container = ProviderContainer();
@@ -87,40 +117,54 @@ void main() {
     });
   });
 
-  group('4. Real-time Live Sync (Web Admin ⇄ Mobile App)', () {
-    test('ShopSyncService updates shop status and emits live ops event', () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+  group('4. In-memory catalog updates (no Firestore connection)', () {
+    ProviderContainer offlineCatalog() => ProviderContainer(
+          overrides: [
+            tiffinShopsProvider.overrideWith(
+              (_) => TiffinShopsViewModel(
+                catalogStream: const Stream<List<TiffinShop>>.empty(),
+              ),
+            ),
+          ],
+        );
 
-      final syncService = container.read(shopSyncServiceProvider);
-      final events = <OpsSyncEvent>[];
-      final subscription = syncService.eventStream.listen(events.add);
-      addTearDown(subscription.cancel);
+    test(
+      'ShopSyncService updates shop status and emits live ops event',
+      () async {
+        final container = offlineCatalog();
+        addTearDown(container.dispose);
 
-      // Verify initial state
-      final shopsInitial = container.read(tiffinShopsProvider);
-      final balaCorner = shopsInitial.firstWhere((s) => s.id == 'shop_bala_corner');
-      expect(balaCorner.status, equals(ShopStatus.closedToday));
+        final syncService = container.read(shopSyncServiceProvider);
+        final nextEvent = syncService.eventStream.first;
 
-      // Ops Admin marks shop OPEN
-      syncService.applyShopStatusUpdate(
-        shopId: 'shop_bala_corner',
-        status: ShopStatus.open,
-      );
+        // Verify initial state
+        final shopsInitial = container.read(tiffinShopsProvider);
+        final balaCorner = shopsInitial.firstWhere(
+          (s) => s.id == 'shop_bala_corner',
+        );
+        expect(balaCorner.status, equals(ShopStatus.closedToday));
 
-      final shopsUpdated = container.read(tiffinShopsProvider);
-      final balaUpdated = shopsUpdated.firstWhere((s) => s.id == 'shop_bala_corner');
-      expect(balaUpdated.status, equals(ShopStatus.open));
-      expect(balaUpdated.isOpen, isTrue);
+        // Ops Admin marks shop OPEN
+        syncService.applyShopStatusUpdate(
+          shopId: 'shop_bala_corner',
+          status: ShopStatus.open,
+        );
 
-      await Future.delayed(const Duration(milliseconds: 50));
-      expect(events.length, equals(1));
-      expect(events.first.action, equals(OpsSyncAction.statusChange));
-      expect(events.first.description.contains('Open'), isTrue);
-    });
+        final shopsUpdated = container.read(tiffinShopsProvider);
+        final balaUpdated = shopsUpdated.firstWhere(
+          (s) => s.id == 'shop_bala_corner',
+        );
+        expect(balaUpdated.status, equals(ShopStatus.open));
+        expect(balaUpdated.isOpen, isTrue);
+
+        final event = await nextEvent;
+        expect(event.action, equals(OpsSyncAction.statusChange));
+        expect(event.description, contains('Open'));
+      },
+    );
 
     test('ShopSyncService updates item price dynamically', () async {
-      final container = ProviderContainer();
+      final container = offlineCatalog();
       addTearDown(container.dispose);
 
       final syncService = container.read(shopSyncServiceProvider);
@@ -131,8 +175,12 @@ void main() {
       );
 
       final shops = container.read(tiffinShopsProvider);
-      final venkateshwara = shops.firstWhere((s) => s.id == 'shop_venkateshwara');
-      final setDosa = venkateshwara.menuItems.firstWhere((i) => i.id == 'item_set_dosa');
+      final venkateshwara = shops.firstWhere(
+        (s) => s.id == 'shop_venkateshwara',
+      );
+      final setDosa = venkateshwara.menuItems.firstWhere(
+        (i) => i.id == 'item_set_dosa',
+      );
       expect(setDosa.price, equals(55));
     });
   });

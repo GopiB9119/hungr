@@ -6,7 +6,6 @@ import 'package:animations/animations.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../../core/utils/date_time_utils.dart';
 import '../../../../core/widgets/confetti_burst_overlay.dart';
 import '../../../../core/widgets/hungr_network_image.dart';
 import '../../domain/tiffin_item_model.dart';
@@ -93,8 +92,6 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
         );
       });
     });
-
-    final bool isPastCutoff = DateTimeUtils.isAfterCutoffToday();
 
     // Filter items based on selected category
     final List<TiffinItem> displayedItems = TiffinItem.standardMenu.where((item) {
@@ -313,8 +310,7 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                             const SizedBox(height: 12),
                           ],
 
-                          // 2B. Compact Cutoff Ribbon (Non-intrusive & informative)
-                          _buildCutoffRibbon(isPastCutoff),
+                          _buildAvailabilityRibbon(),
                           const SizedBox(height: 14),
 
                           // 2C. Personalized Morning Greeting Header
@@ -464,7 +460,6 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
 
   /// Active Morning Order Status Pill (Clean Swiggy/Zomato style)
   Widget _buildActiveOrderBanner(BuildContext context, CustomerDashboardState customerState) {
-    final bagToken = customerState.tickets.isNotEmpty ? customerState.tickets.first.bagToken : '#SS-04';
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
@@ -497,7 +492,7 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Morning Meal Confirmed • Bag $bagToken',
+                    'View your meal schedule',
                     style: AppTypography.labelLarge.copyWith(
                       color: const Color(0xFF15803D),
                       fontWeight: FontWeight.w700,
@@ -505,7 +500,7 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
                     ),
                   ),
                   Text(
-                    'Dropping at ${customerState.selectedCluster.name} by 7:30 AM',
+                    '${customerState.tickets.length} meal tickets',
                     style: AppTypography.caption.copyWith(color: const Color(0xFF166534), fontSize: 11),
                   ),
                 ],
@@ -518,32 +513,25 @@ class _StorefrontScreenState extends ConsumerState<StorefrontScreen> {
     );
   }
 
-  /// Compact Cutoff Ribbon
-  Widget _buildCutoffRibbon(bool isPastCutoff) {
+  Widget _buildAvailabilityRibbon() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: isPastCutoff ? const Color(0xFFF3E8FF) : const Color(0xFFFEF3C7),
+        color: const Color(0xFFFEF3C7),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isPastCutoff ? const Color(0xFFD8B4FE) : const Color(0xFFFDE68A),
+          color: const Color(0xFFFDE68A),
         ),
       ),
       child: Row(
         children: [
-          Icon(
-            isPastCutoff ? Icons.nightlight_round : Icons.bolt_rounded,
-            color: isPastCutoff ? const Color(0xFF7E22CE) : const Color(0xFFB45309),
-            size: 16,
-          ),
+          const Icon(Icons.info_outline, color: Color(0xFFB45309), size: 16),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              isPastCutoff
-                  ? '🌙 Past 9:00 PM: Booking open for ${DateTimeUtils.targetDeliveryLabel()} drop'
-                  : '🔥 9:00 PM Cutoff: Booking closes tonight for tomorrow morning drop',
+              'Ordering is unavailable. You can still browse the menu and review your cart.',
               style: AppTypography.caption.copyWith(
-                color: isPastCutoff ? const Color(0xFF581C87) : const Color(0xFF78350F),
+                color: const Color(0xFF78350F),
                 fontWeight: FontWeight.w600,
                 fontSize: 11,
               ),

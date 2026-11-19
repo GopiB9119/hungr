@@ -16,16 +16,13 @@ const firebaseConfig = {
   appId: "1:1234567890:web:abcdef123456"
 };
 
+const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && !firebaseConfig.apiKey.includes('YOUR_API_KEY'));
 let isFirebaseAvailable = false;
 let db = null;
 let auth = null;
 
 try {
-  if (
-    typeof firebase !== 'undefined' &&
-    firebaseConfig.apiKey &&
-    !firebaseConfig.apiKey.includes('YOUR_API_KEY')
-  ) {
+  if (isFirebaseConfigured && typeof firebase !== 'undefined') {
     if (!firebase.apps.length) {
       firebase.initializeApp(firebaseConfig);
     }
@@ -33,8 +30,10 @@ try {
     auth = firebase.auth();
     isFirebaseAvailable = true;
     console.log('✅ [Hungr Web Admin] Firebase Cloud Firestore initialized successfully!');
+  } else if (isFirebaseConfigured) {
+    console.warn('[Hungr Web Admin] Firebase SDK unavailable; cloud changes cannot be saved.');
   } else {
-    console.warn('⚠️ [Hungr Web Admin] Running in Local Cache Mode. Set your Firebase Web Config in firebase-config.js to activate live cloud sync.');
+    console.info('[Hungr Web Admin] Browser preview only. Changes are not published.');
   }
 } catch (e) {
   console.error('❌ [Hungr Web Admin] Firebase initialization error:', e);

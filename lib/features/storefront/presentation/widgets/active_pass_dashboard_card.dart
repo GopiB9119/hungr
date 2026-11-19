@@ -210,6 +210,7 @@ class ActivePassDashboardCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(customerDashboardProvider);
+    if (!state.hasActivePass || state.tickets.isEmpty) return const SizedBox.shrink();
     final isComboA = state.tomorrowCombo == 'A';
 
     final comboTitle = isComboA ? '2 Hot Set Dosas (Option A)' : '4 Idlis + 1 Medu Vada (Option B)';

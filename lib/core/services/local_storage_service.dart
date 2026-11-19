@@ -1,22 +1,37 @@
 import 'dart:convert';
 import 'dart:io';
+import '../../features/onboarding/domain/cluster_model.dart';
 
-/// Local Persistent Storage Service
-/// Persists authentication session, user profile, chosen delivery cluster,
-/// and pass information across app launches using a robust, pure Dart JSON storage.
-///
-/// Requires ZERO third-party native Android plugins or Gradle dependencies.
+/// Android can give Dart either cache directory. Both have the same private
+/// data root; include the original writer's private fallback locations.
+String? androidStorePath(String tempPath, {
+  required bool Function(String) exists,
+  required bool Function(String) isSafe,
+}) {
+  final match = RegExp(
+    r'^(/(?:data/(?:data|user(?:_de)?/[0-9]+)|mnt/expand/[a-zA-Z0-9-]+/user(?:_de)?/[0-9]+)/[a-zA-Z][a-zA-Z0-9_.]*)/(cache|code_cache)/?$',
+  ).firstMatch(tempPath);
+  if (match == null) return null;
+  final root = match.group(1)!;
+  final current = match.group(2)!;
+  final paths = [
+    for (final dir in ['app_flutter', 'files', current, current == 'cache' ? 'code_cache' : 'cache'])
+      '$root/$dir/hungr_local_store.json',
+  ];
+  for (final path in paths) {
+    if (isSafe(path) && exists(path)) return path;
+  }
+  return isSafe(paths.first) ? paths.first : null;
+}
+
+/// Customer preferences only. Firebase Auth owns the session and phone number.
 class LocalStorageService {
   LocalStorageService._();
+  LocalStorageService.inMemory() : _initialized = Future.value();
   static final LocalStorageService instance = LocalStorageService._();
 
-  static const String _keyIsAuthenticated = 'hungr_is_authenticated';
-  static const String _keyUserName = 'hungr_user_name';
-  static const String _keyUserPhone = 'hungr_user_phone';
-  static const String _keyClusterId = 'hungr_cluster_id';
-  static const String _keyClusterName = 'hungr_cluster_name';
-  static const String _keyClusterZone = 'hungr_cluster_zone';
-  static const String _keyClusterLandmark = 'hungr_cluster_landmark';
+  static const String _keyUid = 'hungr_uid';
+  static const String _keyGate = 'hungr_selected_gate';
   static const String _keyHasActivePass = 'hungr_has_active_pass';
   static const String _keyPassTier = 'hungr_pass_tier';
   static const String _keyMealsRemaining = 'hungr_meals_remaining';
@@ -26,12 +41,14 @@ class LocalStorageService {
   static const String _keyFreePassClaimed = 'hungr_free_pass_claimed';
 
   final Map<String, dynamic> _memoryCache = {};
-  bool _isInitialized = false;
+  Future<void>? _initialized;
+  Future<void> _pendingWrite = Future.value();
   File? _storeFile;
+  bool _needsPrivateFile = false;
 
-  Future<void> _ensureInitialized() async {
-    if (_isInitialized) return;
+  Future<void> _ensureInitialized() => _initialized ??= _load();
 
+  Future<void> _load() async {
     try {
       _storeFile = _resolveStoreFile();
       if (_storeFile != null && await _storeFile!.exists()) {
@@ -45,117 +62,117 @@ class LocalStorageService {
       }
     } catch (_) {
       // Graceful fallback to memoryCache if file system is inaccessible
-    } finally {
-      _isInitialized = true;
     }
   }
 
   File? _resolveStoreFile() {
     try {
-      // On Android / Mobile, try internal app directory
-      final baseDir = Directory.systemTemp.parent;
-      final candidates = [
-        Directory('${baseDir.path}/app_flutter'),
-        Directory('${baseDir.path}/files'),
-        Directory.systemTemp,
-      ];
-
-      for (final dir in candidates) {
-        try {
-          if (!dir.existsSync()) {
-            dir.createSync(recursive: true);
-          }
-          final testFile = File('${dir.path}/hungr_local_store.json');
-          return testFile;
-        } catch (_) {
-          continue;
-        }
-      }
-    } catch (_) {}
-
-    // Fallback to system temp
-    try {
-      return File('${Directory.systemTemp.path}/hungr_local_store.json');
+      // Do not write customer data to a desktop/shared temporary directory.
+      if (!Platform.isAndroid) return null;
+      _needsPrivateFile = true;
+      final path = androidStorePath(Directory.systemTemp.path,
+        exists: (path) => File(path).existsSync(),
+        isSafe: (path) => !FileSystemEntity.isLinkSync(File(path).parent.path) &&
+            !FileSystemEntity.isLinkSync(path),
+      );
+      if (path == null) return null;
+      final file = File(path);
+      file.parent.createSync(recursive: true);
+      return file;
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _persistToDisk() async {
-    if (_storeFile == null) return;
-    try {
-      final jsonString = jsonEncode(_memoryCache);
-      await _storeFile!.writeAsString(jsonString, flush: true);
-    } catch (_) {
-      // In-memory cache continues to serve reads seamlessly
+  Future<void> _persistToDisk({bool requiredForGate = false}) async {
+    final file = _storeFile;
+    if (file == null) {
+      if (_needsPrivateFile && requiredForGate) throw StateError('Private gate storage is unavailable.');
+      return;
     }
+    // Older, unawaited preference writes must not finish after a sign-out wipe.
+    final content = jsonEncode(_memoryCache);
+    final write = _pendingWrite.then((_) async {
+      await file.writeAsString(content, flush: true);
+    });
+    // A failed write must not prevent a later wipe or retry.
+    _pendingWrite = write.catchError((Object _) {});
+    await (requiredForGate ? write : _pendingWrite);
   }
 
-  // --- Auth & User Profile ---
-
-  Future<void> saveUserSession({
-    required String phone,
-    required String name,
-    String? clusterName,
-  }) async {
+  /// Discard legacy unowned data and any previous customer's cache.
+  Future<DeliveryCluster?> bindCustomer(String uid, {required String profileGate}) async {
     await _ensureInitialized();
-    _memoryCache[_keyIsAuthenticated] = true;
-    _memoryCache[_keyUserPhone] = phone;
-    _memoryCache[_keyUserName] = name;
-    if (clusterName != null) {
-      _memoryCache[_keyClusterName] = clusterName;
+    if (_memoryCache[_keyUid] != uid) {
+      _memoryCache.clear();
+      _memoryCache[_keyUid] = uid;
+      await _persistToDisk();
+      return null;
     }
-    await _persistToDisk();
-  }
-
-  Future<bool> isAuthenticated() async {
-    await _ensureInitialized();
-    return _memoryCache[_keyIsAuthenticated] as bool? ?? false;
-  }
-
-  Future<Map<String, String>> getUserSession() async {
-    await _ensureInitialized();
-    return {
-      'phone': (_memoryCache[_keyUserPhone] as String?) ?? '+91 98765 43210',
-      'name': (_memoryCache[_keyUserName] as String?) ?? 'Vamsi Krishna',
-      'clusterName': (_memoryCache[_keyClusterName] as String?) ?? 'Sri Sai Boys Hostel Gate',
-    };
+    final gate = _savedGate;
+    if (gate != null && gate.name == profileGate && gate.id.isNotEmpty && profileGate.isNotEmpty) {
+      return gate;
+    }
+    // A remote name alone cannot identify a gate on a fresh device. Old
+    // separate ID/name fields also could have been written by different saves.
+    if (_memoryCache.remove(_keyGate) != null) await _persistToDisk();
+    return null;
   }
 
   Future<void> clearUserSession() async {
     await _ensureInitialized();
-    _memoryCache.remove(_keyIsAuthenticated);
-    _memoryCache.remove(_keyUserPhone);
-    _memoryCache.remove(_keyUserName);
-    _memoryCache.remove(_keyHasActivePass);
+    _memoryCache.clear();
     await _persistToDisk();
   }
 
   // --- Delivery Cluster ---
 
+  DeliveryCluster? get _savedGate {
+    final data = _memoryCache[_keyGate];
+    if (data is! Map<String, dynamic>) return null;
+    try {
+      return DeliveryCluster.fromMap(data);
+    } on TypeError {
+      return null;
+    }
+  }
+
+  Future<DeliveryCluster?> getSavedGate() async {
+    await _ensureInitialized();
+    return _savedGate;
+  }
+
+  Future<void> saveVerifiedGate(String uid, DeliveryCluster gate) async {
+    await _ensureInitialized();
+    if (_memoryCache[_keyUid] != uid) throw StateError('Customer changed.');
+    final entry = gate.toMap();
+    _memoryCache[_keyGate] = entry;
+    try {
+      await _persistToDisk(requiredForGate: true);
+    } catch (_) {
+      if (identical(_memoryCache[_keyGate], entry)) _memoryCache.remove(_keyGate);
+      rethrow;
+    }
+  }
+
+  // Legacy dashboard call: a display refresh must not select a different gate.
   Future<void> saveCluster({
-    required String id,
-    required String name,
-    required String zone,
-    required String landmark,
+    required String id, required String name, required String zone, required String landmark,
   }) async {
     await _ensureInitialized();
-    _memoryCache[_keyClusterId] = id;
-    _memoryCache[_keyClusterName] = name;
-    _memoryCache[_keyClusterZone] = zone;
-    _memoryCache[_keyClusterLandmark] = landmark;
+    final gate = _savedGate;
+    if (gate == null || gate.id != id || gate.name != name) return;
+    if (gate.addressZone == zone && gate.landmark == landmark) return;
+    _memoryCache[_keyGate] = {...gate.toMap(), 'addressZone': zone, 'landmark': landmark};
     await _persistToDisk();
   }
 
   Future<Map<String, String>?> getSavedCluster() async {
     await _ensureInitialized();
-    final id = _memoryCache[_keyClusterId] as String?;
-    if (id == null) return null;
+    final gate = _savedGate;
+    if (gate == null) return null;
     return {
-      'id': id,
-      'name': (_memoryCache[_keyClusterName] as String?) ?? 'Sri Sai Boys Hostel Gate',
-      'zone': (_memoryCache[_keyClusterZone] as String?) ?? 'Bypass Road, Khammam',
-      'landmark': (_memoryCache[_keyClusterLandmark] as String?) ?? 'Near Bus Stand, Khammam',
+      'id': gate.id, 'name': gate.name, 'zone': gate.addressZone, 'landmark': gate.landmark,
     };
   }
 
@@ -169,6 +186,7 @@ class LocalStorageService {
     required String tomorrowCombo,
   }) async {
     await _ensureInitialized();
+    if (_memoryCache[_keyUid] == null) return;
     _memoryCache[_keyHasActivePass] = hasActivePass;
     _memoryCache[_keyPassTier] = tier;
     _memoryCache[_keyMealsRemaining] = mealsRemaining;
@@ -196,6 +214,7 @@ class LocalStorageService {
     required bool isClaimed,
   }) async {
     await _ensureInitialized();
+    if (_memoryCache[_keyUid] == null) return;
     _memoryCache[_keyReferralCount] = count;
     _memoryCache[_keyFreePassClaimed] = isClaimed;
     await _persistToDisk();
@@ -204,7 +223,7 @@ class LocalStorageService {
   Future<Map<String, dynamic>> getReferralState() async {
     await _ensureInitialized();
     return {
-      'count': (_memoryCache[_keyReferralCount] as int?) ?? 3,
+      'count': (_memoryCache[_keyReferralCount] as int?) ?? 0,
       'isClaimed': (_memoryCache[_keyFreePassClaimed] as bool?) ?? false,
     };
   }

@@ -11,33 +11,61 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isDriver() {
-      return isAuthenticated() && (getUserData().role == 'driver' || request.auth.token.role == 'driver');
+    function hasRole(role) {
+      return isAuthenticated() && request.auth.token.get('role', '') == role;
     }
 
     function isAdmin() {
-      return isAuthenticated() && (getUserData().role == 'admin' || request.auth.token.role == 'admin');
+      return hasRole('admin');
     }
 
-    // Server-side timestamp validation helper for 21:00 IST Cutoff:
-    // IST is UTC + 5 hours 30 minutes. 21:00 IST corresponds to 15:30 UTC.
-    function isBeforeIstCutoff() {
-      let utcHours = request.time.toMillis() / 1000 / 3600 % 24;
-      let utcMinutes = request.time.toMillis() / 1000 / 60 % 60;
-      // 15:30 UTC = 21:00 IST
-      return (utcHours < 15) || (utcHours == 15 && utcMinutes < 30);
+    function isAssignedDriver() {
+      return hasRole('driver') && resource.data.assignedDriverId == request.auth.uid;
+    }
+
+    function isoServiceDay(value) {
+      let parts = value.split('T');
+      let date = parts[0].split('-');
+      let day = timestamp.date(int(date[0]), int(date[1]), int(date[2]));
+      // Dart's unsuffixed date is already local. A Z instant can fall on the next IST day.
+      return value.matches('.*Z') ? (day + duration.value(330, 'm') +
+        duration.value(int(parts[1].split(':')[0]), 'h') +
+        duration.value(int(parts[1].split(':')[1]), 'm')).date() : day;
+    }
+
+    function beforeMealCutoff() {
+      let delivery = resource.data.deliveryDate;
+      let nowIst = request.time + duration.value(330, 'm');
+      // Check the trusted clock AND service day: a missed kitchen lock must not reopen at midnight.
+      return nowIst.hours() < 21 && (
+        (delivery is timestamp && (delivery + duration.value(330, 'm')).date() > nowIst.date()) ||
+        (delivery is string &&
+         delivery.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}(T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]([.][0-9]{1,9})?Z?)?') &&
+         isoServiceDay(delivery) > nowIst.date())
+      );
     }
 
     // User Profile Document
     match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isOwner(userId) || isAdmin(); // DPDP Act & Play Store compliance
+      function validProfileEdit() {
+        return request.resource.data.name is string &&
+               request.resource.data.phoneNumber is string &&
+               request.resource.data.clusterName is string &&
+               request.resource.data.updatedAt == request.time;
+      }
+
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && validProfileEdit() &&
+        request.resource.data.keys().hasOnly([
+          'uid', 'name', 'phoneNumber', 'clusterName', 'role', 'createdAt', 'updatedAt'
+        ]) && request.resource.data.uid == userId &&
+        request.resource.data.role == 'customer' && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin() || (isOwner(userId) && validProfileEdit() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'phoneNumber', 'clusterName', 'updatedAt'
+        ]));
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     // Pre-configured Delivery Clusters
@@ -48,43 +76,29 @@ service cloud.firestore {
 
     // Pass Subscriptions
     match /passes/{passId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isDriver() || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      // Cannot extend pass beyond hardExpiryDate ceiling
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        (resource.data.userId == request.auth.uid && request.resource.data.hardExpiryDate == resource.data.hardExpiryDate)
-      );
-      allow delete: if isAdmin();
+      allow read: if isAdmin() || isOwner(resource.data.userId);
+      // No client writes. Verified issuance and ledger maintenance must run on the server.
     }
 
     // Meal Tickets Ledger
     match /meal_tickets/{ticketId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.assignedDriverId == request.auth.uid ||
-        isDriver() ||
-        isAdmin()
-      );
+      function validProofFields() {
+        let proof = request.resource.data.get('dropProofImageUrl', null);
+        let delivered = request.resource.data.get('deliveredAt', null);
+        return (proof == null || proof is string) && (delivered == null || delivered is string);
+      }
 
-      // Meal Ticket creation allowed only via verified Pass purchase
-      allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid || isAdmin()
-      );
+      allow read: if isAdmin() || isOwner(resource.data.userId) || isAssignedDriver();
 
-      // Customer modification / skip strictly gated before 21:00 IST (15:30 UTC)
-      allow update: if isAuthenticated() && (
-        isAdmin() ||
-        // Driver can update status to DELIVERED and set dropProofImageUrl
-        (isDriver() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'dropProofImageUrl', 'deliveredAt'])) ||
-        // Customer can only modify combo before 21:00 IST cutoff
-        (isOwner(resource.data.userId) &&
-         isBeforeIstCutoff() &&
-         resource.data.status == 'SCHEDULED' &&
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comboSelection', 'addOns']))
-      );
-
-      allow delete: if isAdmin();
+      // Purchase, paid add-ons, skip/replacement and driver assignment are server writes.
+      allow update: if isOwner(resource.data.userId) && resource.data.status == 'SCHEDULED' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comboSelection']) &&
+        request.resource.data.comboSelection in ['A', 'B'] && beforeMealCutoff();
+      allow update: if isAssignedDriver() && resource.data.status == 'LOCKED' &&
+        request.resource.data.status == 'DELIVERED' && validProofFields() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'dropProofImageUrl', 'deliveredAt'
+        ]);
     }
 
     // Daily Inventory & Batch Locks
@@ -93,10 +107,9 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Driver Manifests
+    // No manifest assignment schema or driver manifest writer exists in this client.
     match /driver_manifests/{manifestId} {
-      allow read: if isAuthenticated() && (isDriver() || isAdmin());
-      allow write: if isAuthenticated() && (isDriver() || isAdmin());
+      allow read, write: if isAdmin();
     }
 
     // Kitchen Batches (21:01 IST Aggregations)
@@ -108,11 +121,11 @@ service cloud.firestore {
     // Partner Tiffin Kitchens & Menus (Live sync with Web Admin)
     match /tiffin_shops/{shopId} {
       allow read: if true; // Publicly readable for customer apps
-      allow write: if isAuthenticated() && (isAdmin() || request.auth.token.role == 'partner');
+      allow write: if isAdmin();
 
       match /dishes/{dishId} {
         allow read: if true;
-        allow write: if isAuthenticated() && (isAdmin() || request.auth.token.role == 'partner');
+        allow write: if isAdmin();
       }
     }
 

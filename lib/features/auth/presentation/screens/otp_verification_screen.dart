@@ -11,14 +11,7 @@ import '../../../../core/router/route_names.dart';
 import '../viewmodels/auth_viewmodel.dart';
 
 class OtpVerificationScreen extends ConsumerStatefulWidget {
-  final String phoneNumber;
-  final String userName;
-
-  const OtpVerificationScreen({
-    super.key,
-    this.phoneNumber = '+91 98765 43210',
-    this.userName = 'Vamsi Krishna',
-  });
+  const OtpVerificationScreen({super.key});
 
   @override
   ConsumerState<OtpVerificationScreen> createState() => _OtpVerificationScreenState();
@@ -32,7 +25,6 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
 
   int _resendCountdown = 30;
   Timer? _timer;
-  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -68,21 +60,19 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
   }
 
   void _verifyOtp() {
+    if (ref.read(authProvider).isLoading) return;
     final otp = _controllers.map((c) => c.text).join();
     if (otp.length == 6) {
-      setState(() => _isSubmitting = true);
       HapticFeedback.mediumImpact();
 
       ref.read(authProvider.notifier).verifyCode(
             smsCode: otp,
             onSuccess: () {
               if (!mounted) return;
-              setState(() => _isSubmitting = false);
               context.go(RouteNames.clusterSelection);
             },
             onError: (error) {
               if (!mounted) return;
-              setState(() => _isSubmitting = false);
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   backgroundColor: AppColors.urgentCrimson,
@@ -110,19 +100,21 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
     }
   }
 
+  void _changePhone() {
+    ref.read(authProvider.notifier).cancelChallenge();
+    context.go(RouteNames.phoneAuth);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final authState = ref.watch(authProvider);
     final isOtpComplete = _controllers.every((c) => c.text.isNotEmpty);
 
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(RouteNames.phoneAuth);
-        }
+        _changePhone();
       },
       child: Scaffold(
         backgroundColor: AppColors.obsidianBackground,
@@ -131,13 +123,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 18),
-            onPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go(RouteNames.phoneAuth);
-              }
-            },
+            onPressed: _changePhone,
           ),
         ),
       body: SafeArea(
@@ -194,7 +180,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                 children: [
                   Flexible(
                     child: Text(
-                      'Sent to ${widget.phoneNumber}',
+                      'Sent to ${authState.phoneNumber}',
                       style: AppTypography.bodyMedium.copyWith(
                         color: AppColors.textMutedSlate,
                       ),
@@ -203,7 +189,7 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                   ),
                   const SizedBox(width: 8),
                   InkWell(
-                    onTap: () => Navigator.of(context).pop(),
+                    onTap: _changePhone,
                     borderRadius: AppDimensions.radius8,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
@@ -333,12 +319,16 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        onPressed: () {
+                        onPressed: authState.isLoading ? null : () {
                           HapticFeedback.lightImpact();
                           ref.read(authProvider.notifier).requestOtp(
-                                phone: widget.phoneNumber,
-                                name: widget.userName,
-                                onSuccess: () {
+                                phone: authState.phoneNumber,
+                                name: authState.userName,
+                                resend: true,
+                                onVerified: () {
+                                  if (mounted) context.go(RouteNames.clusterSelection);
+                                },
+                                onCodeSent: () {
                                   if (!mounted) return;
                                   _startTimer();
                                   ScaffoldMessenger.of(context).clearSnackBars();
@@ -372,32 +362,6 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                   .animate()
                   .fadeIn(delay: 250.ms, duration: 400.ms),
 
-              const SizedBox(height: 12),
-
-              // Quick Auto-fill for Testing & Demo
-              Center(
-                child: TextButton.icon(
-                  onPressed: () {
-                    HapticFeedback.lightImpact();
-                    const testCode = '123456';
-                    for (int i = 0; i < 6; i++) {
-                      _controllers[i].text = testCode[i];
-                    }
-                    setState(() {});
-                    _verifyOtp();
-                  },
-                  icon: const Icon(Icons.bolt_rounded, size: 15, color: AppColors.goldenAmber),
-                  label: Text(
-                    'Auto-fill Demo Code (123456)',
-                    style: AppTypography.caption.copyWith(
-                      color: AppColors.goldenAmber,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11.5,
-                    ),
-                  ),
-                ),
-              ),
-
               const SizedBox(height: 36),
 
               // Verify & Continue Button
@@ -414,8 +378,8 @@ class _OtpVerificationScreenState extends ConsumerState<OtpVerificationScreen> {
                       borderRadius: AppDimensions.radius16,
                     ),
                   ),
-                  onPressed: isOtpComplete && !_isSubmitting ? _verifyOtp : null,
-                  child: _isSubmitting
+                  onPressed: isOtpComplete && !authState.isLoading ? _verifyOtp : null,
+                  child: authState.isLoading
                       ? const SizedBox(
                           width: 22,
                           height: 22,

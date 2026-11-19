@@ -53,12 +53,12 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
     ref.read(authProvider.notifier).requestOtp(
       phone: cleanPhone,
       name: name,
-      onSuccess: () {
+      onCodeSent: () {
         if (!mounted) return;
-        context.push(RouteNames.otpVerify, extra: {
-          'phone': cleanPhone,
-          'name': name.isNotEmpty ? name : 'Hungr User',
-        });
+        context.push(RouteNames.otpVerify);
+      },
+      onVerified: () {
+        if (mounted) context.go(RouteNames.clusterSelection);
       },
       onError: (error) {
         if (!mounted) return;
@@ -75,6 +75,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authProvider);
     return Scaffold(
       backgroundColor: AppColors.obsidianBackground,
       appBar: AppBar(
@@ -150,6 +151,20 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
 
               const SizedBox(height: 32),
 
+              if (auth.restoreError != null) ...[
+                Text(auth.restoreError!, style: AppTypography.bodyMedium),
+                TextButton(
+                  onPressed: auth.isLoading ? null : () async {
+                    final model = ref.read(authProvider.notifier);
+                    await model.retryRestore();
+                    if (context.mounted && model.hasVerifiedSession) {
+                      context.go(model.hasSavedGate ? RouteNames.storefront : RouteNames.clusterSelection);
+                    }
+                  },
+                  child: const Text('Retry loading profile'),
+                ),
+              ],
+
               // Phone Input Card
               ObsidianCard(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -196,7 +211,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                         decoration: InputDecoration(
-                          hintText: '98765 43210',
+                          hintText: '10-digit number',
                           hintStyle: AppTypography.titleLarge.copyWith(
                             color: AppColors.textSubtle.withOpacity(0.4),
                             letterSpacing: 2.0,
@@ -234,7 +249,7 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
                         controller: _nameController,
                         style: AppTypography.titleMedium,
                         decoration: InputDecoration(
-                          hintText: 'Your Name (e.g. Vamsi Krishna)',
+                          hintText: 'Your name',
                           hintStyle: AppTypography.titleMedium.copyWith(
                             color: AppColors.textSubtle.withOpacity(0.5),
                           ),
@@ -336,14 +351,14 @@ class _PhoneAuthScreenState extends ConsumerState<PhoneAuthScreen> {
                     padding: const EdgeInsets.all(8.0),
                     child: Text.rich(
                       TextSpan(
-                        text: 'By continuing, you agree to Hungr’s ',
+                        text: 'Learn about ',
                         style: AppTypography.bodySmall.copyWith(
                           color: AppColors.textSubtle,
                           fontSize: 11,
                         ),
                         children: const [
                           TextSpan(
-                            text: 'Terms & Privacy Policy',
+                            text: 'Purchases & Privacy',
                             style: TextStyle(
                               color: AppColors.textMutedSlate,
                               decoration: TextDecoration.underline,

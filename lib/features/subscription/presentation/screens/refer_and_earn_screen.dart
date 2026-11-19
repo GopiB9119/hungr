@@ -6,11 +6,9 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../../core/widgets/confetti_burst_overlay.dart';
 import '../../../../core/widgets/obsidian_card.dart';
-import '../../../storefront/presentation/viewmodels/customer_dashboard_viewmodel.dart';
 import '../viewmodels/referral_viewmodel.dart';
-import '../viewmodels/subscription_history_viewmodel.dart';
+import '../widgets/referral_unavailable_notice.dart';
 
 /// Flagship Dedicated Refer & Earn Screen
 /// Features the 3-member viral loop:
@@ -23,7 +21,6 @@ class ReferAndEarnScreen extends ConsumerStatefulWidget {
 }
 
 class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
-  final GlobalKey<ConfettiBurstOverlayState> _confettiKey = GlobalKey();
   bool _copied = false;
 
   void _copyCode(String code) {
@@ -43,74 +40,10 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
     });
   }
 
-  Future<void> _handleClaim(ReferralState refState) async {
-    final customerState = ref.read(customerDashboardProvider);
-    _confettiKey.currentState?.burstAtCenter();
-
-    final success = await ref.read(referralProvider.notifier).claimFree3DayPass(
-          dashboardNotifier: ref.read(customerDashboardProvider.notifier),
-          historyNotifier: ref.read(subscriptionHistoryProvider.notifier),
-          clusterName: customerState.selectedCluster.name,
-        );
-
-    if (!mounted) return;
-
-    if (success) {
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFECFDF5),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.card_giftcard_rounded, color: AppColors.neonMint, size: 40),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '3-Day Pass Unlocked FREE!',
-                style: AppTypography.headlineMedium.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Congratulations! 3 of your referred friends completed their first morning order. Your 3-Day Starter Pass is activated for ₹0.',
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    context.go(RouteNames.ticketCalendar);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.zomatoRed,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text('View Morning Tickets ➔', style: AppTypography.labelLarge.copyWith(color: Colors.white)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final referralState = ref.watch(referralProvider);
+    final code = referralState.referralCode;
 
     return PopScope(
       canPop: false,
@@ -122,9 +55,7 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
           context.go(RouteNames.profile);
         }
       },
-      child: ConfettiBurstOverlay(
-        key: _confettiKey,
-        child: Scaffold(
+      child: Scaffold(
           backgroundColor: AppColors.obsidianBackground,
           appBar: AppBar(
             backgroundColor: Colors.white,
@@ -139,12 +70,9 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                 }
               },
             ),
-            title: Text(
-              'Refer & Earn Free Pass',
-              style: AppTypography.titleLarge.copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-            ),
+            title: const Text('Referral rewards'),
           ),
-          body: SingleChildScrollView(
+          body: code == null ? const Center(child: ReferralUnavailableNotice()) : SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -398,7 +326,7 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              referralState.referralCode,
+                              code,
                               style: AppTypography.titleMedium.copyWith(
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 2.0,
@@ -406,7 +334,7 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                               ),
                             ),
                             ElevatedButton.icon(
-                              onPressed: () => _copyCode(referralState.referralCode),
+                              onPressed: () => _copyCode(code),
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: _copied ? AppColors.neonMint : AppColors.textPrimary,
                                 foregroundColor: Colors.white,
@@ -469,33 +397,6 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                     Text(
                       'Referred Friends (${referralState.friends.length})',
                       style: AppTypography.titleSmall.copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    // Quick Demo Simulator for user evaluation
-                    InkWell(
-                      onTap: () {
-                        ref.read(referralProvider.notifier).simulateFriendFirstOrder();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.zomatoRedSurface,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.check_circle_outline, color: AppColors.zomatoRed, size: 12),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Simulate 1st Order (+1)',
-                              style: AppTypography.caption.copyWith(
-                                color: AppColors.zomatoRed,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -575,7 +476,7 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
               ],
             ),
           ),
-          bottomSheet: Container(
+          bottomSheet: code == null ? null : Container(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
             decoration: const BoxDecoration(
               color: Colors.white,
@@ -603,7 +504,7 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                       )
                     : (referralState.isRewardUnlocked
                         ? ElevatedButton.icon(
-                            onPressed: () => _handleClaim(referralState),
+                            onPressed: null,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.neonMint,
                               foregroundColor: Colors.white,
@@ -611,10 +512,10 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
                             icon: const Icon(Icons.card_giftcard_rounded, color: Colors.white),
-                            label: Text('CLAIM 3-DAY STARTER PASS (₹0)', style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold, fontSize: 14)),
+                            label: const Text('Reward redemption unavailable'),
                           )
                         : ElevatedButton.icon(
-                            onPressed: () => _copyCode(referralState.referralCode),
+                            onPressed: () => _copyCode(code),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF25D366), // WhatsApp Green
                               foregroundColor: Colors.white,
@@ -623,14 +524,13 @@ class _ReferAndEarnScreenState extends ConsumerState<ReferAndEarnScreen> {
                             ),
                             icon: const Icon(Icons.share_rounded, color: Colors.white),
                             label: Text(
-                              'Share on WhatsApp (${referralState.remainingOrdersNeeded} more order needed)',
+                              'Copy referral code',
                               style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold, fontSize: 13.5),
                             ),
                           )),
               ),
             ),
           ),
-        ),
       ),
     );
   }

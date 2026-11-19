@@ -6,9 +6,8 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../storefront/presentation/viewmodels/customer_dashboard_viewmodel.dart';
 import '../viewmodels/referral_viewmodel.dart';
-import '../viewmodels/subscription_history_viewmodel.dart';
+import 'referral_unavailable_notice.dart';
 
 /// Modal bottom sheet showcasing the Viral Referral Loop
 /// ("Refer 3 Friends who complete 1st order -> Get 3-Day Starter Pass FREE")
@@ -48,73 +47,13 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
     });
   }
 
-  Future<void> _handleClaim(ReferralState refState) async {
-    final customerState = ref.read(customerDashboardProvider);
-    final success = await ref.read(referralProvider.notifier).claimFree3DayPass(
-          dashboardNotifier: ref.read(customerDashboardProvider.notifier),
-          historyNotifier: ref.read(subscriptionHistoryProvider.notifier),
-          clusterName: customerState.selectedCluster.name,
-        );
-
-    if (!mounted) return;
-
-    if (success) {
-      Navigator.of(context).pop();
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFECFDF5),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.card_giftcard_rounded, color: AppColors.neonMint, size: 40),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '3-Day Pass Unlocked FREE!',
-                style: AppTypography.headlineMedium.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Congratulations! 3 friends completed their first morning order. Your 3-Day Starter Pass is activated for ₹0.',
-                style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    context.go(RouteNames.ticketCalendar);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.zomatoRed,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: Text('View Morning Tickets ➔', style: AppTypography.labelLarge.copyWith(color: Colors.white)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final referralState = ref.watch(referralProvider);
+    final code = referralState.referralCode;
+    if (code == null) {
+      return const Material(child: SafeArea(child: ReferralUnavailableNotice()));
+    }
 
     return Container(
       constraints: BoxConstraints(
@@ -341,7 +280,7 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          referralState.referralCode,
+                          code,
                           style: AppTypography.titleMedium.copyWith(
                             fontWeight: FontWeight.w800,
                             letterSpacing: 2.0,
@@ -349,7 +288,7 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                           ),
                         ),
                         ElevatedButton.icon(
-                          onPressed: () => _copyCode(referralState.referralCode),
+                          onPressed: () => _copyCode(code),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: _copied ? AppColors.neonMint : AppColors.textPrimary,
                             foregroundColor: Colors.white,
@@ -373,33 +312,6 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                       Text(
                         'Friends Invited (${referralState.friends.length})',
                         style: AppTypography.titleSmall.copyWith(fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                      ),
-                      // Interactive Demo Button for instant testing
-                      InkWell(
-                        onTap: () {
-                          ref.read(referralProvider.notifier).simulateFriendFirstOrder();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.zomatoRedSurface,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.check_circle_outline, color: AppColors.zomatoRed, size: 12),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Simulate 1st Order (+1)',
-                                style: AppTypography.caption.copyWith(
-                                  color: AppColors.zomatoRed,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ),
                     ],
                   ),
@@ -510,7 +422,7 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                       )
                     : (referralState.isRewardUnlocked
                         ? ElevatedButton.icon(
-                            onPressed: () => _handleClaim(referralState),
+                            onPressed: null,
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.neonMint,
                               foregroundColor: Colors.white,
@@ -518,10 +430,10 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                             ),
                             icon: const Icon(Icons.card_giftcard_rounded, color: Colors.white),
-                            label: Text('CLAIM 3-DAY STARTER PASS (₹0)', style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold, fontSize: 14)),
+                            label: const Text('Reward redemption unavailable'),
                           )
                         : ElevatedButton.icon(
-                            onPressed: () => _copyCode(referralState.referralCode),
+                            onPressed: () => _copyCode(code),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF25D366), // WhatsApp Green
                               foregroundColor: Colors.white,
@@ -530,7 +442,7 @@ class _ReferralViralSheetState extends ConsumerState<ReferralViralSheet> {
                             ),
                             icon: const Icon(Icons.share_rounded, color: Colors.white),
                             label: Text(
-                              'Share on WhatsApp (${referralState.remainingOrdersNeeded} more order needed)',
+                              'Copy referral code',
                               style: AppTypography.labelLarge.copyWith(fontWeight: FontWeight.bold, fontSize: 13.5),
                             ),
                           )),

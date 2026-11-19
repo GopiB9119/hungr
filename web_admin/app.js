@@ -84,9 +84,6 @@ const ZONES = [
     id: 'north',
     name: 'Khammam North (Bypass Road)',
     overview: 'Bypass Road, New Collectorate & Mamatha Circle',
-    driver: 'Ramesh Goud',
-    phone: '+91 98480 11223',
-    vehicle: 'Honda Activa 6G (TS 04 EA 1234)',
     orders: 42,
     fuelSaved: 2.8,
     route: 'Bypass Hub ➔ Sri Sai PG ➔ Kakatiya Girls ➔ Collectorate Quarters',
@@ -102,9 +99,6 @@ const ZONES = [
     id: 'south',
     name: 'Khammam South (Wyra Road)',
     overview: 'Wyra Road, Mamillagudem & NSP Colony',
-    driver: 'Suresh Kumar',
-    phone: '+91 98480 22334',
-    vehicle: 'Hero Splendor+ (TS 04 EB 5678)',
     orders: 38,
     fuelSaved: 2.3,
     route: 'Wyra Road Hub ➔ Green Valley ➔ Sri Chaitanya ➔ Vijaya Towers',
@@ -120,9 +114,6 @@ const ZONES = [
     id: 'east',
     name: 'Khammam East (Bus Stand & Station)',
     overview: 'RTC New Bus Stand, Railway Station & Mamata Hospital',
-    driver: 'Naresh Babu',
-    phone: '+91 98480 33445',
-    vehicle: 'TVS Jupiter 125 (TS 04 EC 9012)',
     orders: 51,
     fuelSaved: 3.4,
     route: 'East Hub ➔ Bus Stand Gate ➔ Mamata Quarters ➔ Krishna Residency',
@@ -138,9 +129,6 @@ const ZONES = [
     id: 'west',
     name: 'Khammam West (Gandhi Chowk & Old Town)',
     overview: 'Gandhi Chowk, Mayuri Centre & Rotary Nagar',
-    driver: 'Mahesh Yadav',
-    phone: '+91 98480 44556',
-    vehicle: 'Bajaj Pulsar 125 (TS 04 ED 3456)',
     orders: 29,
     fuelSaved: 1.9,
     route: 'West Hub ➔ Gayatri Towers ➔ Mayuri Centre ➔ Rotary Nagar',
@@ -158,7 +146,7 @@ const DISPATCH_FEED = [
   {
     cluster: 'Sri Sai PG Main Gate',
     zone: 'North (Bypass)',
-    details: '12 Units Delivered • Photo verified at watchman desk by Ramesh Goud',
+    details: '12 Units Delivered • Photo verified at watchman desk',
     time: '07:38 AM IST',
     status: 'delivered',
     icon: '✅'
@@ -166,7 +154,7 @@ const DISPATCH_FEED = [
   {
     cluster: 'Green Valley Watchman Desk',
     zone: 'South (Wyra)',
-    details: '9 Units Out for Delivery • Driver Suresh Kumar en route (2 min away)',
+    details: '9 Units Out for Delivery • Driver en route (2 min away)',
     time: '07:44 AM IST',
     status: 'out',
     icon: '🛵'
@@ -174,7 +162,7 @@ const DISPATCH_FEED = [
   {
     cluster: 'Sri Krishna Residency Gate',
     zone: 'East (Bus Stand)',
-    details: '14 Units Delivered • Received by Watchman Mallesh',
+    details: '14 Units Delivered • Received at the security desk',
     time: '07:29 AM IST',
     status: 'delivered',
     icon: '✅'
@@ -221,69 +209,112 @@ const DEFAULT_OFFERS = [
   }
 ];
 
-let shops = JSON.parse(localStorage.getItem('hungr_admin_shops')) || DEFAULT_SHOPS;
-let offers = JSON.parse(localStorage.getItem('hungr_admin_offers')) || DEFAULT_OFFERS;
+// Only the unconfigured preview uses browser storage. Never substitute it for a failed cloud read or write.
+const localPreview = typeof isFirebaseConfigured !== 'undefined' && !isFirebaseConfigured;
+let shops = localPreview ? JSON.parse(localStorage.getItem('hungr_admin_shops')) || DEFAULT_SHOPS : null;
+let offers = localPreview ? JSON.parse(localStorage.getItem('hungr_admin_offers')) || DEFAULT_OFFERS : [];
+const pendingOfferDeletes = new Map();
+const confirmedReads = new Set();
+let readFailed = false;
 
-function saveShopsToStorage() {
-  localStorage.setItem('hungr_admin_shops', JSON.stringify(shops));
+function saveShopsToStorage(next) {
+  localStorage.setItem('hungr_admin_shops', JSON.stringify(next));
+  shops = next;
   renderShops();
   updateKPIs();
 }
 
-function saveOffersToStorage() {
-  localStorage.setItem('hungr_admin_offers', JSON.stringify(offers));
+function saveOffersToStorage(next) {
+  localStorage.setItem('hungr_admin_offers', JSON.stringify(next));
+  offers = next;
   renderOffers();
 }
 
-// Cloud Firestore Real-time Sync Engine
-function initFirestoreSync() {
-  const pill = document.getElementById('firebase-status-pill');
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    if (pill) {
-      pill.innerHTML = '🟢 Cloud Firestore Live';
-      pill.style.background = '#064E3B';
-      pill.style.color = '#34D399';
-    }
-    // Real-time synchronization for tiffin kitchens & menus
-    db.collection('tiffin_shops').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        shops = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        localStorage.setItem('hungr_admin_shops', JSON.stringify(shops));
-        renderShops();
-        updateKPIs();
-        console.log('🔄 [Web Admin] Real-time kitchens synced from Firestore:', shops.length);
-      }
-    }, err => {
-      console.warn('Firestore tiffin_shops stream warning:', err);
-    });
-
-    // Real-time synchronization for offers & banners
-    db.collection('offers').onSnapshot(snapshot => {
-      if (!snapshot.empty) {
-        offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        localStorage.setItem('hungr_admin_offers', JSON.stringify(offers));
-        renderOffers();
-        console.log('🔄 [Web Admin] Real-time offers synced from Firestore:', offers.length);
-      }
-    }, err => {
-      console.warn('Firestore offers stream warning:', err);
-    });
-  } else {
-    if (pill) {
-      pill.innerHTML = '🟡 Local Mode (Set keys in firebase-config.js)';
-      pill.style.background = '#78350F';
-      pill.style.color = '#FCD34D';
-    }
-  }
+function cloudAvailable() {
+  return typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db;
 }
 
-async function seedFirestoreDefaults() {
-  if (typeof isFirebaseAvailable === 'undefined' || !isFirebaseAvailable || !db) {
-    alert('Please enter your real Firebase web configuration in web_admin/firebase-config.js before pushing live data.');
+async function saveCatalogChange(button, savePreview, saveCloud, isCurrent = () => true) {
+  if (button && button.disabled) return false;
+  if (!localPreview && !cloudAvailable()) {
+    alert('Not saved: Firestore is unavailable.');
+    return false;
+  }
+  const label = button && button.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = localPreview ? 'Saving preview…' : 'Waiting for Firestore…';
+  }
+  try {
+    if (localPreview) savePreview();
+    else await saveCloud();
+  } catch {
+    if (isCurrent()) alert(localPreview ? 'Not saved: browser storage is unavailable.' : 'Not saved to Firestore. Check account permissions and connectivity.');
+    return false;
+  } finally {
+    if (button && isCurrent()) {
+      button.disabled = false;
+      button.textContent = label;
+    }
+  }
+  if (isCurrent()) alert(localPreview ? 'Saved in this browser only. Not published.' : 'Saved to Firestore.');
+  return true;
+}
+
+function showCloudStatus() {
+  document.getElementById('firebase-status-pill').textContent = readFailed ? 'Firestore catalog unavailable or incomplete'
+    : pendingOfferDeletes.size ? 'Awaiting offer deletion confirmation'
+    : confirmedReads.size === 2 ? 'Catalog confirmed by Firestore' : 'Awaiting Firestore catalog confirmation';
+}
+
+function displayOfferSnapshot(rows) {
+  if (rows !== null) {
+    // Query metadata describes remaining documents; an unsettled delete can already be absent.
+    for (const [id, pending] of pendingOfferDeletes) {
+      const current = rows.find(row => row.id === id);
+      pending.omitted = !current;
+      if (current) pending.row = current;
+      else rows.push(pending.row);
+    }
+  }
+  offers = rows ?? [];
+  renderOffers();
+}
+
+function initFirestoreSync() {
+  const pill = document.getElementById('firebase-status-pill');
+  if (localPreview || !cloudAvailable()) {
+    pill.textContent = localPreview ? 'Catalog preview • this browser only' : 'Firestore unavailable • no catalog changes';
     return;
   }
 
-  const btn = event ? event.target : null;
+  function watch(name, display) {
+    db.collection(name).onSnapshot({ includeMetadataChanges: true }, snapshot => {
+      if (snapshot.metadata.fromCache || snapshot.metadata.hasPendingWrites) {
+        confirmedReads.delete(name);
+      } else {
+        display(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+        confirmedReads.add(name);
+      }
+      showCloudStatus();
+    }, () => {
+      readFailed = true;
+      confirmedReads.delete(name);
+      display(null);
+      showCloudStatus();
+    });
+  }
+  showCloudStatus();
+  watch('tiffin_shops', rows => { shops = rows; renderShops(); updateKPIs(); });
+  watch('offers', displayOfferSnapshot);
+}
+
+async function seedFirestoreDefaults(btn) {
+  if (!cloudAvailable()) {
+    alert('Not saved: seeding requires a configured Firestore connection.');
+    return;
+  }
+
   const originalText = btn ? btn.innerText : '';
   if (btn) btn.innerText = '⏳ Pushing to Cloud...';
 
@@ -300,10 +331,9 @@ async function seedFirestoreDefaults() {
     });
 
     await batch.commit();
-    alert('🎉 Successfully seeded 4 Khammam partner kitchens, menus, and live offers to Cloud Firestore!\nYour mobile app is now receiving live cloud data!');
-  } catch (e) {
-    console.error('Seed error:', e);
-    alert('Failed to seed Firestore: ' + e.message);
+    alert('Default kitchens and offers saved to Firestore.');
+  } catch {
+    alert('Defaults not saved to Firestore. Check account permissions and connectivity.');
   } finally {
     if (btn) btn.innerText = originalText;
   }
@@ -311,70 +341,77 @@ async function seedFirestoreDefaults() {
 
 // 3. KPI Updates
 function updateKPIs() {
-  const openCount = shops.filter(s => s.status === 'open').length;
-  const closedCount = shops.length - openCount;
+  const openCount = shops?.filter(s => s.status === 'open').length;
   const totalOrders = ZONES.reduce((acc, z) => acc + z.orders, 0);
   const totalFuel = ZONES.reduce((acc, z) => acc + z.fuelSaved, 0).toFixed(1);
 
-  document.getElementById('total-shops-kpi').innerText = `${shops.length} Shops`;
-  document.getElementById('open-shops-kpi').innerText = `${openCount} Open • ${closedCount} Closed`;
+  document.getElementById('total-shops-kpi').innerText = shops === null ? '—' : `${shops.length} Shops`;
+  document.getElementById('open-shops-kpi').innerText = shops === null ? '—' : `${openCount} Open • ${shops.length - openCount} Closed`;
   document.getElementById('total-orders-kpi').innerText = `${totalOrders} Meals`;
   document.getElementById('fuel-saved-kpi').innerText = `${totalFuel} Litres`;
 }
 
 // 4. Render Partner Shops
+function addElement(parent, tag, className = '', text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  parent.appendChild(node);
+  return node;
+}
+
+function addButton(parent, className, label, action) {
+  const button = addElement(parent, 'button', className, label);
+  button.type = 'button';
+  button.addEventListener('click', () => action(button));
+  return button;
+}
+
+const statusLabels = new Map([
+  ['open', 'Open for Drops'],
+  ['closedToday', 'Closed Today'],
+  ['closedTemporary', 'Closed Temporarily'],
+  ['permanentlyClosed', 'Permanently Closed'],
+]);
+
 function renderShops() {
   const container = document.getElementById('shops-container');
-  container.innerHTML = '';
+  container.replaceChildren();
+  if (shops === null) return;
 
   shops.forEach(shop => {
     const isClosed = shop.status !== 'open';
-    const statusLabels = {
-      open: 'Open for Drops',
-      closedToday: 'Closed Today',
-      closedTemporary: 'Closed Temporarily',
-      permanentlyClosed: 'Permanently Closed'
-    };
+    const card = addElement(container, 'div', isClosed ? 'shop-card closed' : 'shop-card');
+    const header = addElement(card, 'div', 'shop-card-header');
+    const heading = addElement(header, 'div');
+    addElement(heading, 'h3', 'shop-info-title', shop.name);
+    addElement(heading, 'p', 'shop-info-zone', `📍 ${shop.zone ?? ''}`);
+    const status = statusLabels.has(shop.status) ? shop.status : 'unknown';
+    addElement(header, 'span', `status-badge ${status}`, statusLabels.get(status) || 'Unknown status');
 
-    const card = document.createElement('div');
-    card.className = `shop-card ${isClosed ? 'closed' : ''}`;
-    card.innerHTML = `
-      <div class="shop-card-header">
-        <div>
-          <h3 class="shop-info-title">${shop.name}</h3>
-          <p class="shop-info-zone">📍 ${shop.zone}</p>
-        </div>
-        <span class="status-badge ${shop.status}">${statusLabels[shop.status]}</span>
-      </div>
+    const body = addElement(card, 'div', 'shop-card-body');
+    addElement(body, 'p', 'shop-tagline', `"${shop.tagline ?? ''}"`);
+    if (isClosed) {
+      const notice = addElement(body, 'div', 'closure-alert-box');
+      addElement(notice, 'strong', '', '⚠️ Closure Alert: ');
+      addElement(notice, 'span', '', shop.closureReason || 'Temporarily closed');
+      addElement(notice, 'br');
+      const reopen = addElement(notice, 'span', '', 'Expected Reopening: ');
+      reopen.style.fontSize = '11px';
+      addElement(reopen, 'strong', '', shop.reopenDate || 'Soon');
+    }
 
-      <div class="shop-card-body">
-        <p class="shop-tagline">"${shop.tagline}"</p>
+    addElement(body, 'p', 'menu-caption', 'DISH MENU & PRICING:');
+    const list = addElement(body, 'div', 'dishes-pill-list');
+    shop.dishes.forEach(dish => {
+      const pill = addElement(list, 'div', 'dish-pill');
+      addElement(pill, 'span', '', dish.name);
+      addElement(pill, 'span', 'dish-price', `₹${dish.price}`);
+    });
 
-        ${isClosed ? `
-          <div class="closure-alert-box">
-            <strong>⚠️ Closure Alert:</strong> ${shop.closureReason || 'Temporarily closed'}<br>
-            <span style="font-size: 11px;">Expected Reopening: <strong>${shop.reopenDate || 'Soon'}</strong></span>
-          </div>
-        ` : ''}
-
-        <p style="font-size: 11px; font-weight: 700; color: #4B5563; margin-bottom: 6px;">DISH MENU & LIVE PRICING:</p>
-        <div class="dishes-pill-list">
-          ${shop.dishes.map(d => `
-            <div class="dish-pill">
-              <span>${d.name}</span>
-              <span class="dish-price">₹${d.price}</span>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-
-      <div class="shop-card-footer">
-        <span class="delivery-window-pill">⏰ ${shop.deliveryWindow}</span>
-        <button class="btn btn-secondary btn-sm" onclick="openEditShopModal('${shop.id}')">Manage & Edit ➔</button>
-      </div>
-    `;
-
-    container.appendChild(card);
+    const footer = addElement(card, 'div', 'shop-card-footer');
+    addElement(footer, 'span', 'delivery-window-pill', `⏰ ${shop.deliveryWindow ?? ''}`);
+    addButton(footer, 'btn btn-secondary btn-sm', 'Manage & Edit ➔', () => openEditShopModal(shop.id));
   });
 }
 
@@ -401,22 +438,12 @@ function renderZones() {
       <div class="density-bar-container">
         <div class="density-bar-fill" style="width: ${percentage}%;"></div>
       </div>
-
-      <div class="driver-info-box">
-        <div>
-          <p class="driver-name">🛵 Driver: ${zone.driver}</p>
-          <p class="driver-phone">${zone.vehicle} • ${zone.phone}</p>
-        </div>
-        <div style="display:flex; gap:6px;">
-          <button class="btn btn-secondary btn-sm" onclick="alert('Calling Driver ${zone.driver} (${zone.phone})...')">Call</button>
-          <button class="btn btn-primary btn-sm" onclick="openDriverManifestModal('${zone.id}')">📋 Manifest</button>
-        </div>
-      </div>
-
-      <p class="route-desc">Consolidated Route: ${zone.route}</p>
-      <p style="font-size: 11px; color: #16A34A; font-weight: 600; margin-top: 4px;">⚡ Fuel Saved: ${zone.fuelSaved}L</p>
     `;
-
+    const actions = addElement(card, 'div', 'driver-info-box');
+    addButton(actions, 'btn btn-primary btn-sm', '📋 Manifest', () => openDriverManifestModal(zone.id));
+    addElement(card, 'p', 'route-desc', `Consolidated Route: ${zone.route}`);
+    const savings = addElement(card, 'p', '', `⚡ Fuel Saved: ${zone.fuelSaved}L`);
+    savings.style.cssText = 'font-size:11px; color:#16A34A; font-weight:600; margin-top:4px';
     container.appendChild(card);
   });
 }
@@ -435,13 +462,15 @@ function renderDispatchFeed() {
         <h4 class="feed-title">${item.cluster} <span style="font-size: 11px; font-weight: normal; color: #6B7280;">(${item.zone})</span></h4>
         <p class="feed-sub">${item.details}</p>
       </div>
-      <div style="text-align: right;">
-        <span class="feed-time">${item.time}</span>
-        ${item.canRetry ? `
-          <br><button class="btn btn-primary btn-sm" style="margin-top: 6px;" onclick="retryDrop(${index})">Re-Attempt Drop</button>
-        ` : ''}
-      </div>
     `;
+    const footer = addElement(el, 'div');
+    footer.style.textAlign = 'right';
+    addElement(footer, 'span', 'feed-time', item.time);
+    if (item.canRetry) {
+      addElement(footer, 'br');
+      const retry = addButton(footer, 'btn btn-primary btn-sm', 'Re-Attempt Drop', () => retryDrop(index));
+      retry.style.marginTop = '6px';
+    }
     container.appendChild(el);
   });
 }
@@ -449,16 +478,23 @@ function renderDispatchFeed() {
 function retryDrop(index) {
   DISPATCH_FEED[index].status = 'out';
   DISPATCH_FEED[index].icon = '🛵';
-  DISPATCH_FEED[index].details = 'Re-attempt dispatched. Driver Mahesh returning to gate with warden notified.';
+  DISPATCH_FEED[index].details = 'Sample retry recorded in this view. No driver was contacted.';
   DISPATCH_FEED[index].canRetry = false;
   renderDispatchFeed();
 }
 
 // 7. Modal Controls
+const editSaveButton = document.getElementById('edit-shop-save');
+const editSaveLabel = editSaveButton.textContent;
+let editSession = null;
+
 function openEditShopModal(shopId) {
-  const shop = shops.find(s => s.id === shopId);
+  const shop = shops?.find(s => s.id === shopId);
   if (!shop) return;
 
+  editSession = { id: shopId };
+  editSaveButton.disabled = false;
+  editSaveButton.textContent = editSaveLabel;
   document.getElementById('edit-shop-id').value = shop.id;
   document.getElementById('edit-modal-title').innerText = `Manage: ${shop.name}`;
   document.getElementById('edit-shop-status').value = shop.status;
@@ -466,21 +502,26 @@ function openEditShopModal(shopId) {
   document.getElementById('edit-shop-reopen').value = shop.reopenDate || '';
 
   const dishesContainer = document.getElementById('edit-shop-dishes');
-  dishesContainer.innerHTML = shop.dishes.map((dish, idx) => `
-    <div class="dish-edit-row">
-      <span>${dish.name}</span>
-      <div>
-        <span>₹ </span>
-        <input type="number" id="dish-price-${idx}" value="${dish.price}" min="10" max="300">
-      </div>
-    </div>
-  `).join('');
+  dishesContainer.replaceChildren();
+  shop.dishes.forEach((dish, idx) => {
+    const row = addElement(dishesContainer, 'div', 'dish-edit-row');
+    addElement(row, 'span', '', dish.name);
+    const field = addElement(row, 'div');
+    addElement(field, 'span', '', '₹ ');
+    const input = addElement(field, 'input');
+    input.type = 'number';
+    input.min = '10';
+    input.max = '300';
+    input.id = `dish-price-${idx}`;
+    input.value = dish.price;
+  });
 
   toggleClosureFields();
   document.getElementById('edit-shop-modal').classList.add('open');
 }
 
 function closeEditShopModal() {
+  editSession = null;
   document.getElementById('edit-shop-modal').classList.remove('open');
 }
 
@@ -498,33 +539,30 @@ function toggleClosureFields() {
   }
 }
 
-function saveShopChanges() {
-  const id = document.getElementById('edit-shop-id').value;
-  const shop = shops.find(s => s.id === id);
+async function saveShopChanges() {
+  const session = editSession;
+  if (!session) return;
+  const { id } = session;
+  const shop = shops?.find(s => s.id === id);
   if (!shop) return;
 
-  shop.status = document.getElementById('edit-shop-status').value;
-  shop.closureReason = document.getElementById('edit-shop-reason').value.trim();
-  shop.reopenDate = document.getElementById('edit-shop-reopen').value.trim();
-
-  shop.dishes.forEach((dish, idx) => {
-    const input = document.getElementById(`dish-price-${idx}`);
-    if (input) {
-      dish.price = parseInt(input.value) || dish.price;
-    }
-  });
-
-  saveShopsToStorage();
-  broadcastKitchenUpdate('UPDATE_SHOP_STATUS_AND_PRICES', shop);
-
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    db.collection('tiffin_shops').doc(shop.id).set(shop, { merge: true })
-      .then(() => console.log('✅ Real-time Firestore sync complete for', shop.id))
-      .catch(e => console.error('Firestore save error:', e));
-  }
-
-  closeEditShopModal();
-  alert(`Changes saved for ${shop.name}! Status: ${shop.status.toUpperCase()}`);
+  const edits = {
+    status: document.getElementById('edit-shop-status').value,
+    closureReason: document.getElementById('edit-shop-reason').value.trim(),
+    reopenDate: document.getElementById('edit-shop-reopen').value.trim(),
+    dishes: shop.dishes.map((dish, idx) => {
+      const input = document.getElementById(`dish-price-${idx}`);
+      return { ...dish, price: (input && parseInt(input.value)) || dish.price };
+    }),
+  };
+  const edited = { ...shop, ...edits };
+  const isCurrent = () => editSession === session;
+  const saved = await saveCatalogChange(editSaveButton,
+    () => saveShopsToStorage(shops.map(s => s.id === id ? edited : s)),
+    () => db.collection('tiffin_shops').doc(id).update(edits), isCurrent);
+  if (!saved) return;
+  if (!localPreview) broadcastKitchenUpdate('UPDATE_SHOP_STATUS_AND_PRICES', edited);
+  if (isCurrent()) closeEditShopModal();
 }
 
 function openAddShopModal() {
@@ -535,7 +573,7 @@ function closeAddShopModal() {
   document.getElementById('add-shop-modal').classList.remove('open');
 }
 
-function saveNewShop() {
+async function saveNewShop(button) {
   const name = document.getElementById('add-shop-name').value.trim();
   const tagline = document.getElementById('add-shop-tagline').value.trim();
   const zone = document.getElementById('add-shop-zone').value;
@@ -564,18 +602,12 @@ function saveNewShop() {
     ]
   };
 
-  shops.push(newShop);
-  saveShopsToStorage();
-  broadcastKitchenUpdate('ADD_NEW_SHOP', newShop);
-
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    db.collection('tiffin_shops').doc(newShop.id).set(newShop)
-      .then(() => console.log('✅ New kitchen synced to Cloud Firestore:', newShop.id))
-      .catch(e => console.error('Firestore kitchen save error:', e));
-  }
-
+  const saved = await saveCatalogChange(button,
+    () => saveShopsToStorage([...shops, newShop]),
+    () => db.collection('tiffin_shops').doc(newShop.id).set(newShop));
+  if (!saved) return;
+  if (!localPreview) broadcastKitchenUpdate('ADD_NEW_SHOP', newShop);
   closeAddShopModal();
-  alert(`Onboarded ${name} successfully!`);
 }
 
 // ==========================================
@@ -584,42 +616,32 @@ function saveNewShop() {
 function renderOffers() {
   const container = document.getElementById('offers-container');
   if (!container) return;
-  container.innerHTML = '';
+  container.replaceChildren();
 
   if (offers.length === 0) {
-    container.innerHTML = '<div style="color: #9CA3AF; grid-column: 1/-1; text-align: center; padding: 40px;">No promotional offers currently active. Click "+ Create New Promo Offer" to add one.</div>';
+    container.innerHTML = '<div style="color: #9CA3AF; grid-column: 1/-1; text-align: center; padding: 40px;">No offers to display.</div>';
     return;
   }
 
   offers.forEach(offer => {
-    const card = document.createElement('div');
-    card.className = 'shop-card';
-    card.style.background = '#1E293B';
-    card.style.border = offer.isActive ? '1px solid #10B981' : '1px solid #475569';
-    card.style.padding = '18px';
-    card.style.borderRadius = '14px';
+    const card = addElement(container, 'div', `shop-card offer-card${offer.isActive ? ' enabled' : ''}`);
+    const header = addElement(card, 'div', 'offer-header');
+    const details = addElement(header, 'div');
+    addElement(details, 'span', 'offer-code', offer.code);
+    addElement(details, 'h4', 'offer-description', offer.description);
+    const terms = addElement(details, 'p', 'offer-terms', 'Type: ');
+    const discount = offer.type === 'flat' ? `₹${offer.value} Flat Off`
+      : offer.type === 'percentage' ? `${offer.value}% Off` : 'Free Gate Drop';
+    addElement(terms, 'strong', '', discount);
+    addElement(terms, 'span', '', ` • Min Order: ₹${offer.minOrder}`);
+    addElement(header, 'span', 'offer-status', offer.isActive ? 'ENABLED' : 'PAUSED');
 
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
-        <div>
-          <span style="font-family: monospace; font-size: 16px; font-weight: 800; color: #F59E0B; background: #451A03; padding: 4px 10px; border-radius: 6px; letter-spacing: 1px;">${offer.code}</span>
-          <h4 style="margin: 10px 0 4px; font-size: 15px; color: #FFFFFF; font-weight: 700;">${offer.description}</h4>
-          <p style="margin: 0; font-size: 12px; color: #94A3B8;">Type: <strong>${offer.type === 'flat' ? '₹' + offer.value + ' Flat Off' : offer.type === 'percentage' ? offer.value + '% Off' : 'Free Gate Drop'}</strong> • Min Order: ₹${offer.minOrder}</p>
-        </div>
-        <span style="font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px; background: ${offer.isActive ? '#064E3B' : '#334155'}; color: ${offer.isActive ? '#34D399' : '#94A3B8'};">
-          ${offer.isActive ? 'ACTIVE ON APP' : 'PAUSED'}
-        </span>
-      </div>
-      <div style="display: flex; gap: 8px; margin-top: 14px; border-top: 1px solid #334155; padding-top: 12px;">
-        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" onclick="toggleOfferStatus('${offer.id}')">
-          ${offer.isActive ? '⏸️ Pause Offer' : '▶️ Activate'}
-        </button>
-        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #EF4444; border-color: #EF4444;" onclick="deleteOffer('${offer.id}')">
-          🗑️ Delete
-        </button>
-      </div>
-    `;
-    container.appendChild(card);
+    const actions = addElement(card, 'div', 'offer-actions');
+    addButton(actions, 'btn btn-secondary', offer.isActive ? '⏸️ Pause Offer' : '▶️ Activate',
+      button => toggleOfferStatus(offer.id, button));
+    const deleting = pendingOfferDeletes.has(offer.id);
+    addButton(actions, 'btn btn-secondary offer-delete', deleting ? 'Deleting…' : '🗑️ Delete',
+      button => deleteOffer(offer.id, button)).disabled = deleting;
   });
 }
 
@@ -633,7 +655,7 @@ function closeAddOfferModal() {
   if (m) m.classList.remove('open');
 }
 
-function saveNewOffer() {
+async function saveNewOffer(button) {
   const code = document.getElementById('offer-code').value.trim().toUpperCase();
   const desc = document.getElementById('offer-description').value.trim();
   const type = document.getElementById('offer-type').value;
@@ -655,41 +677,44 @@ function saveNewOffer() {
     isActive: true,
   };
 
-  offers.push(newOffer);
-  saveOffersToStorage();
-
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    db.collection('offers').doc(newOffer.id).set(newOffer)
-      .then(() => console.log('✅ New offer synced to Cloud Firestore:', newOffer.id))
-      .catch(e => console.error('Firestore offer save error:', e));
-  }
-
-  closeAddOfferModal();
-  alert(`Promo code ${code} published live to mobile storefront!`);
+  const saved = await saveCatalogChange(button,
+    () => saveOffersToStorage([...offers, newOffer]),
+    () => db.collection('offers').doc(newOffer.id).set(newOffer));
+  if (saved) closeAddOfferModal();
 }
 
-function toggleOfferStatus(offerId) {
+async function toggleOfferStatus(offerId, button) {
   const offer = offers.find(o => o.id === offerId);
   if (!offer) return;
 
-  offer.isActive = !offer.isActive;
-  saveOffersToStorage();
-
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    db.collection('offers').doc(offer.id).update({ isActive: offer.isActive })
-      .catch(e => console.error('Error toggling offer:', e));
-  }
+  const isActive = !offer.isActive;
+  await saveCatalogChange(button,
+    () => saveOffersToStorage(offers.map(o => o.id === offerId ? { ...o, isActive } : o)),
+    () => db.collection('offers').doc(offerId).update({ isActive }));
 }
 
-function deleteOffer(offerId) {
+async function deleteOffer(offerId, button) {
+  const offer = offers.find(o => o.id === offerId);
+  if (!offer || pendingOfferDeletes.has(offerId)) return;
   if (!confirm('Are you sure you want to delete this offer?')) return;
-  offers = offers.filter(o => o.id !== offerId);
-  saveOffersToStorage();
-
-  if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
-    db.collection('offers').doc(offerId).delete()
-      .catch(e => console.error('Error deleting offer from Firestore:', e));
-  }
+  await saveCatalogChange(button,
+    () => saveOffersToStorage(offers.filter(o => o.id !== offerId)),
+    async () => {
+      const pending = { row: offer, omitted: false };
+      pendingOfferDeletes.set(offerId, pending);
+      showCloudStatus();
+      try {
+        await db.collection('offers').doc(offerId).delete();
+        if (pending.omitted) offers = offers.filter(o => o.id !== offerId);
+      } catch (error) {
+        if (pending.omitted) confirmedReads.delete('offers');
+        throw error;
+      } finally {
+        pendingOfferDeletes.delete(offerId);
+        renderOffers();
+        showCloudStatus();
+      }
+    });
 }
 
 // Driver Manifest Modal Controls for Operations Web App
@@ -697,13 +722,12 @@ function openDriverManifestModal(zoneId) {
   const zone = ZONES.find(z => z.id === zoneId);
   if (!zone) return;
 
-  document.getElementById('manifest-modal-title').innerText = `Delivery Manifest • ${zone.driver} (${zone.name})`;
+  document.getElementById('manifest-modal-title').innerText = `Sample Delivery Manifest • ${zone.name}`;
   const container = document.getElementById('manifest-modal-body');
   
-  let stopsHtml = `
+  container.innerHTML = `
     <div style="background:#F9FAFB; padding:12px; border-radius:8px; margin-bottom:14px; font-size:12px; border:1px solid #E5E7EB;">
-      <strong>Driver:</strong> ${zone.driver} • <strong>Vehicle:</strong> ${zone.vehicle}<br>
-      <strong>Phone:</strong> ${zone.phone} • <strong>Consolidated Orders:</strong> ${zone.orders} Meals<br>
+      <strong>Consolidated Orders:</strong> ${zone.orders} Meals<br>
       <strong>Drop Target:</strong> Security Desk by 7:30 AM (Sub-2-min gate drop)
     </div>
     <h4 style="font-size:13px; font-weight:700; margin-bottom:10px;">Cluster Delivery Stops & Bag Tokens:</h4>
@@ -711,8 +735,9 @@ function openDriverManifestModal(zoneId) {
 
   if (zone.clusters && zone.clusters.length > 0) {
     zone.clusters.forEach((cluster, idx) => {
-      stopsHtml += `
-        <div style="background:white; border:1px solid #E5E7EB; border-radius:8px; padding:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+      const stop = addElement(container, 'div');
+      stop.style.cssText = 'background:white; border:1px solid #E5E7EB; border-radius:8px; padding:12px; margin-bottom:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05)';
+      stop.innerHTML = `
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <div>
               <span style="background:${zone.color}; color:white; font-size:10px; font-weight:800; padding:2px 7px; border-radius:4px;">${cluster.token}</span>
@@ -721,17 +746,15 @@ function openDriverManifestModal(zoneId) {
             <span style="font-size:11px; font-weight:700; color:#111827;">${cluster.meals} Breakfast Bags</span>
           </div>
           <p style="font-size:11px; color:#4B5563; margin-bottom:8px;">Drop Location: Hostel Main Gate / Security Reception Desk</p>
-          <button class="btn btn-secondary btn-sm" onclick="copyWhatsAppAlert('${cluster.token}', '${cluster.name}', '${zone.driver}')">
-            📲 Copy 1-Tap WhatsApp Gate Drop Alert
-          </button>
-        </div>
       `;
+      addButton(stop, 'btn btn-secondary btn-sm', '📲 Copy Sample Gate Drop Alert',
+        () => copyWhatsAppAlert(cluster.token, cluster.name));
     });
   } else {
-    stopsHtml += `<p style="color:#6B7280; font-size:12px;">No cluster stops assigned.</p>`;
+    const note = addElement(container, 'p', '', 'No cluster stops assigned.');
+    note.style.cssText = 'color:#6B7280; font-size:12px';
   }
 
-  container.innerHTML = stopsHtml;
   document.getElementById('driver-manifest-modal').classList.add('open');
 }
 
@@ -739,12 +762,12 @@ function closeDriverManifestModal() {
   document.getElementById('driver-manifest-modal').classList.remove('open');
 }
 
-function copyWhatsAppAlert(token, clusterName, driverName) {
-  const msg = `🔔 *HOT BREAKFAST DROPPED AT YOUR GATE!* 🔔\n\nYour morning tiffin parcel is ready!\n🏷️ *Bag Token:* *${token}*\n📍 *Location:* ${clusterName} (Security Desk)\n⏰ *Drop Time:* 07:34 AM IST\n🛵 *Delivered By:* ${driverName}\n♨️ *Heat Freshness:* Best consumed within 30 mins!\n\n👉 *View Parcel Drop Proof:* hungr://drop/${token.replace('#','')}\n\n_Hungr delivers strictly to hostel security reception to guarantee on-time morning arrival._`;
+function copyWhatsAppAlert(token, clusterName) {
+  const msg = `Sample gate drop notice (not a delivery confirmation)\nBag: ${token}\nLocation: ${clusterName} (Security Desk)`;
   
   if (navigator.clipboard) {
     navigator.clipboard.writeText(msg).then(() => {
-      alert(`WhatsApp alert message for Bag ${token} copied to clipboard! Paste directly into student chat.`);
+      alert('Sample notice copied to clipboard.');
     }).catch(() => {
       alert(`Bag Token: ${token} at ${clusterName}`);
     });
@@ -773,7 +796,7 @@ document.querySelectorAll('.tab-btn').forEach(button => {
   });
 });
 
-// 9. Realtime Live Sync Engine (Web Admin ⇄ Mobile App)
+// Notify same-origin browser listeners after a confirmed kitchen write.
 const opsBroadcastChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('hungr_ops_channel') : null;
 
 function broadcastKitchenUpdate(action, data) {
@@ -844,7 +867,6 @@ function initKhammamMap() {
         hubMarker.bindPopup(`
           <div style="font-family:'Plus Jakarta Sans',sans-serif; min-width:180px;">
             <strong style="color:${zone.color}; font-size:13px;">${zone.name}</strong><br>
-            <span style="font-size:11px; color:#4B5563;">🛵 Driver: <b>${zone.driver}</b></span><br>
             <span style="font-size:11px; color:#16A34A;">⛽ Saved: <b>${zone.fuelSaved} Litres</b></span><br>
             <span style="font-size:12px; font-weight:700; color:#111827;">📦 ${zone.orders} Pre-Batched Meals</span>
           </div>
@@ -919,7 +941,7 @@ function renderVectorMapFallback(container) {
           <circle cx="400" cy="75" r="16" fill="#3B82F6"/>
           <text x="400" y="79" fill="#FFFFFF" font-family="'JetBrains Mono'" font-size="10" font-weight="800" text-anchor="middle">42</text>
           <text x="400" y="50" font-family="'Plus Jakarta Sans'" font-size="12" font-weight="800" fill="#1D4ED8" text-anchor="middle">NORTH (Bypass)</text>
-          <text x="400" y="105" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">Ramesh Goud • 3 Clusters</text>
+          <text x="400" y="105" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">3 Clusters</text>
         </g>
 
         <!-- South Sector (Wyra Road) -->
@@ -929,7 +951,7 @@ function renderVectorMapFallback(container) {
           <circle cx="400" cy="320" r="16" fill="#10B981"/>
           <text x="400" y="324" fill="#FFFFFF" font-family="'JetBrains Mono'" font-size="10" font-weight="800" text-anchor="middle">38</text>
           <text x="400" y="352" font-family="'Plus Jakarta Sans'" font-size="12" font-weight="800" fill="#047857" text-anchor="middle">SOUTH (Wyra Rd)</text>
-          <text x="400" y="295" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">Suresh Kumar • 3 Clusters</text>
+          <text x="400" y="295" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">3 Clusters</text>
         </g>
 
         <!-- East Sector (Bus Stand) -->
@@ -939,7 +961,7 @@ function renderVectorMapFallback(container) {
           <circle cx="620" cy="200" r="16" fill="#F59E0B"/>
           <text x="620" y="204" fill="#FFFFFF" font-family="'JetBrains Mono'" font-size="10" font-weight="800" text-anchor="middle">51</text>
           <text x="620" y="170" font-family="'Plus Jakarta Sans'" font-size="12" font-weight="800" fill="#B45309" text-anchor="middle">EAST (Bus Stand)</text>
-          <text x="620" y="230" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">Naresh Babu • 3 Clusters</text>
+          <text x="620" y="230" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">3 Clusters</text>
         </g>
 
         <!-- West Sector (Gandhi Chowk) -->
@@ -949,7 +971,7 @@ function renderVectorMapFallback(container) {
           <circle cx="180" cy="200" r="16" fill="#EF4444"/>
           <text x="180" y="204" fill="#FFFFFF" font-family="'JetBrains Mono'" font-size="10" font-weight="800" text-anchor="middle">29</text>
           <text x="180" y="170" font-family="'Plus Jakarta Sans'" font-size="12" font-weight="800" fill="#B91C1C" text-anchor="middle">WEST (Gandhi Chowk)</text>
-          <text x="180" y="230" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">Mahesh Yadav • 3 Clusters</text>
+          <text x="180" y="230" font-family="sans-serif" font-size="10" fill="#4B5563" text-anchor="middle">3 Clusters</text>
         </g>
       </svg>
     </div>

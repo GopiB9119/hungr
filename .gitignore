@@ -43,6 +43,13 @@ migrate_working_dir/
 **/build/
 **/android/**/GeneratedPluginRegistrant.java
 
+# Local Firebase tools and dependencies
+node_modules/
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+**/android/app/google-services.json
+
 # iOS/macOS related
 **/ios/**/*.mode1v3
 **/ios/**/*.mode2v3

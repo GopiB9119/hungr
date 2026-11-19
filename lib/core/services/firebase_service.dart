@@ -5,6 +5,67 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../features/storefront/domain/tiffin_shop_model.dart';
 
+typedef CustomerProfile = ({String name, String clusterName});
+typedef ProfileSnapshot = ({Map<String, dynamic>? data, bool pending});
+
+CustomerProfile? verifiedCustomerProfile(Map<String, dynamic>? data, {
+  required String uid,
+  required String phone,
+}) {
+  if (data == null) return null;
+  final name = data['name'];
+  final gate = data['clusterName'];
+  if (data['uid'] != uid || data['phoneNumber'] != phone ||
+      data['createdAt'] is! Timestamp || data['updatedAt'] is! Timestamp ||
+      data['role'] != 'customer' || name is! String || name.trim().isEmpty || gate is! String) {
+    throw StateError('Customer profile is incomplete.');
+  }
+  return (name: name, clusterName: gate);
+}
+
+Future<CustomerProfile?> loadVerifiedProfile({
+  required String uid,
+  required String phone,
+  required Future<ProfileSnapshot> Function(Source) read,
+}) async {
+  ProfileSnapshot doc;
+  try {
+    doc = await read(Source.server);
+  } on FirebaseException catch (error) {
+    if (error.code != 'unavailable' && error.code != 'deadline-exceeded') rethrow;
+    // Never use a cached document in place of a server denial or deletion.
+    doc = await read(Source.cache);
+    if (doc.data == null) rethrow;
+  }
+  if (doc.pending) throw StateError('Profile is not confirmed.');
+  return verifiedCustomerProfile(doc.data, uid: uid, phone: phone);
+}
+
+/// Mutable profile fields for a returning customer; identity/role/creation
+/// time are initialized only when the document does not yet exist.
+Map<String, Object> customerProfileWrite({
+  required String uid,
+  required String verifiedPhone,
+  required Map<String, dynamic>? existing,
+  required Object serverTime,
+  String? name,
+  String? clusterName,
+}) {
+  return {
+    if (existing == null) ...{
+      'uid': uid,
+      'role': 'customer',
+      'createdAt': serverTime,
+    },
+    'name': name != null && name.trim().isNotEmpty
+        ? name.trim()
+        : (existing?['name'] as String?) ?? 'Hungr User',
+    'phoneNumber': verifiedPhone,
+    'clusterName': clusterName ?? (existing?['clusterName'] as String?) ?? '',
+    'updatedAt': serverTime,
+  };
+}
+
 /// Production Firebase Service powering Authentication, Real-time Firestore sync,
 /// and live catalog management for Hungr.
 class FirebaseService {
@@ -29,9 +90,8 @@ class FirebaseService {
       _firestore = FirebaseFirestore.instance;
       _isInitialized = true;
       debugPrint('✅ [FirebaseService] Successfully connected to Firebase');
-    } catch (e) {
-      debugPrint('⚠️ [FirebaseService] Firebase init notice: $e');
-      // Graceful fallback during offline development or test runs
+    } catch (_) {
+      debugPrint('[FirebaseService] Firebase unavailable; phone sign-in is disabled.');
       _isInitialized = false;
     }
   }
@@ -45,25 +105,20 @@ class FirebaseService {
     required String phoneNumber,
     required void Function(String verificationId, int? resendToken) onCodeSent,
     required void Function(String errorMessage) onError,
-    void Function(PhoneAuthCredential credential)? onAutoVerified,
+    required Future<void> Function(PhoneAuthCredential credential) onAutoVerified,
     int? resendToken,
   }) async {
+    if (!isInitialized) {
+      onError('Phone sign-in is unavailable. Please try again later.');
+      return;
+    }
     try {
-      final authInstance = auth;
-      await authInstance.verifyPhoneNumber(
+      await auth.verifyPhoneNumber(
         phoneNumber: phoneNumber,
         timeout: const Duration(seconds: 60),
         forceResendingToken: resendToken,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          debugPrint('⚡ [PhoneAuth] Instant auto-verification on Android device');
-          if (onAutoVerified != null) {
-            onAutoVerified(credential);
-          } else {
-            await authInstance.signInWithCredential(credential);
-          }
-        },
+        verificationCompleted: onAutoVerified,
         verificationFailed: (FirebaseAuthException e) {
-          debugPrint('❌ [PhoneAuth] Verification failed: ${e.code} - ${e.message}');
           String message = 'Phone verification failed. Please try again.';
           if (e.code == 'invalid-phone-number') {
             message = 'The provided phone number is not valid.';
@@ -71,76 +126,36 @@ class FirebaseService {
             message = 'SMS quota exceeded for today. Please try again later.';
           } else if (e.code == 'too-many-requests') {
             message = 'Too many requests. Please wait a few moments.';
-          } else if (e.message != null && e.message!.isNotEmpty) {
-            message = e.message!;
           }
           onError(message);
         },
-        codeSent: (String verificationId, int? newResendToken) {
-          debugPrint('📨 [PhoneAuth] OTP SMS dispatched. Verification ID: $verificationId');
-          onCodeSent(verificationId, newResendToken);
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          debugPrint('⏰ [PhoneAuth] Auto retrieval timed out for $verificationId');
-        },
+        codeSent: onCodeSent,
+        codeAutoRetrievalTimeout: (_) {}, // Manual entry remains available.
       );
-    } catch (e) {
-      debugPrint('❌ [PhoneAuth] Unexpected error: $e');
-      onError('Unable to request OTP: $e');
+    } catch (_) {
+      onError('Unable to request a verification code. Please try again.');
     }
   }
 
-  /// Verifies the 6-digit SMS code and establishes customer session
-  Future<UserCredential> verifyOtp({
-    required String verificationId,
-    required String smsCode,
-    required String userName,
-    required String phoneNumber,
-    String? dropGate,
-  }) async {
-    final credential = PhoneAuthProvider.credential(
-      verificationId: verificationId,
-      smsCode: smsCode,
-    );
-
-    final userCredential = await auth.signInWithCredential(credential);
-    final user = userCredential.user;
-
-    if (user != null) {
-      // Sync user profile to Firestore
-      await syncUserProfile(
-        uid: user.uid,
-        name: userName,
-        phone: phoneNumber,
-        dropGate: dropGate ?? 'Khammam Gate',
-      );
-    }
-
-    return userCredential;
+  Future<User?> signIn(PhoneAuthCredential credential) async {
+    return (await auth.signInWithCredential(credential)).user;
   }
 
-  /// Sign out current user
-  Future<void> signOut() async {
-    try {
-      await auth.signOut();
-    } catch (e) {
-      debugPrint('Error signing out: $e');
-    }
-  }
+  Future<void> signOut() => auth.signOut();
 
   /// Auth state stream
   Stream<User?> get authStateChanges {
     try {
-      return auth.authStateChanges();
+      return isInitialized ? auth.authStateChanges() : Stream.value(null);
     } catch (_) {
-      return const Stream.empty();
+      return Stream.value(null);
     }
   }
 
   /// Current logged-in user
   User? get currentUser {
     try {
-      return auth.currentUser;
+      return isInitialized ? auth.currentUser : null;
     } catch (_) {
       return null;
     }
@@ -150,36 +165,53 @@ class FirebaseService {
   // 2. USER PROFILE SYNC
   // ==========================================
 
-  Future<void> syncUserProfile({
-    required String uid,
-    required String name,
-    required String phone,
-    required String dropGate,
-  }) async {
-    try {
-      final docRef = firestore.collection('users').doc(uid);
-      final doc = await docRef.get();
-      if (!doc.exists) {
-        await docRef.set({
-          'uid': uid,
-          'name': name,
-          'phoneNumber': phone,
-          'clusterName': dropGate,
-          'role': 'customer',
-          'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      } else {
-        await docRef.update({
-          'name': name,
-          'phoneNumber': phone,
-          'clusterName': dropGate,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      debugPrint('⚠️ [FirebaseService] User profile sync notice: $e');
+  String _verifiedPhone(User user) {
+    final phone = user.phoneNumber;
+    if (phone == null || phone.isEmpty || user.isAnonymous || currentUser?.uid != user.uid ||
+        currentUser?.phoneNumber != phone) {
+      throw StateError('A verified phone session is required.');
     }
+    return phone;
+  }
+
+  Future<CustomerProfile?> readCustomerProfile(User user) async {
+    final phone = _verifiedPhone(user);
+    final ref = firestore.collection('users').doc(user.uid);
+    return loadVerifiedProfile(uid: user.uid, phone: phone, read: (source) async {
+      final doc = await ref.get(GetOptions(source: source));
+      return (data: doc.data(), pending: doc.metadata.hasPendingWrites);
+    });
+  }
+
+  Future<CustomerProfile> syncUserProfile({
+    required User user,
+    String? name,
+    String? clusterName,
+  }) async {
+    final phone = _verifiedPhone(user);
+    final docRef = firestore.collection('users').doc(user.uid);
+    return firestore.runTransaction((transaction) async {
+      final doc = await transaction.get(docRef);
+      final fields = customerProfileWrite(
+        uid: user.uid,
+        verifiedPhone: phone,
+        existing: doc.data(),
+        serverTime: FieldValue.serverTimestamp(),
+        name: name,
+        clusterName: clusterName,
+      );
+      if (doc.exists) {
+        // A mutable-field update cannot repair an incomplete customer identity.
+        final existing = doc.data()!;
+        if (existing['uid'] != user.uid || existing['role'] != 'customer' || existing['createdAt'] is! Timestamp) {
+          throw StateError('Customer profile is incomplete.');
+        }
+        transaction.update(docRef, fields);
+      } else {
+        transaction.set(docRef, fields);
+      }
+      return (name: fields['name'] as String, clusterName: fields['clusterName'] as String);
+    });
   }
 
   // ==========================================
@@ -216,7 +248,7 @@ class FirebaseService {
     try {
       return firestore
           .collection('offers')
-          .where('isActive', '==', true)
+          .where('isActive', isEqualTo: true)
           .snapshots()
           .map((snapshot) => snapshot.docs.map((d) => {'id': d.id, ...d.data()}).toList())
           .handleError((_) => <Map<String, dynamic>>[]);

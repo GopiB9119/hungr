@@ -8,7 +8,7 @@ final clusterRepositoryProvider = Provider<ClusterRepository>((ref) {
 final selectedClusterProvider = StateProvider<DeliveryCluster?>((ref) => null);
 
 class ClusterRepository {
-  static List<DeliveryCluster> _clusters = [
+  List<DeliveryCluster> _clusters = [
     // Zone 1: Khammam North (Bypass Road & Collectorate)
     const DeliveryCluster(
       id: 'cluster_01',

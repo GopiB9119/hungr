@@ -427,6 +427,26 @@ body {
   flex: 1;
 }
 
+.menu-caption { font-size: 11px; font-weight: 700; color: #4B5563; margin-bottom: 6px; }
+
+.offer-card { background: #1E293B; border: 1px solid #475569; padding: 18px; border-radius: 14px; }
+.offer-card.enabled { border-color: #10B981; }
+.offer-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.offer-code {
+  font: 800 16px monospace; color: #F59E0B; background: #451A03;
+  padding: 4px 10px; border-radius: 6px; letter-spacing: 1px;
+}
+.offer-description { margin: 10px 0 4px; font-size: 15px; color: white; font-weight: 700; }
+.offer-terms { margin: 0; font-size: 12px; color: #94A3B8; }
+.offer-status {
+  font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 6px;
+  background: #334155; color: #94A3B8;
+}
+.offer-card.enabled .offer-status { background: #064E3B; color: #34D399; }
+.offer-actions { display: flex; gap: 8px; margin-top: 14px; border-top: 1px solid #334155; padding-top: 12px; }
+.offer-actions .btn { font-size: 12px; padding: 6px 12px; }
+.offer-delete { color: #EF4444; border-color: #EF4444; }
+
 .shop-tagline {
   font-size: 12.5px;
   color: var(--text-secondary);

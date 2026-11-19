@@ -16,6 +16,7 @@ class ViralReferralBanner extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final refState = ref.watch(referralProvider);
+    if (refState.referralCode == null) return const SizedBox.shrink();
 
     final bool isUnlocked = refState.isRewardUnlocked;
     final bool isClaimed = refState.isRewardClaimed;

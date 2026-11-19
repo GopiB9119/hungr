@@ -167,7 +167,7 @@ class PassCard3D extends ConsumerWidget {
                       fontSize: 11,
                     ),
                   ),
-                  if (isTrial && !isClaimed) ...[
+                  if (referralState.referralCode != null && isTrial && !isClaimed) ...[
                     const SizedBox(height: 4),
                     GestureDetector(
                       onTap: () => context.push(RouteNames.referral),

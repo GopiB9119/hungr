@@ -27,12 +27,11 @@
       </div>
     </div>
     <div class="nav-actions">
-      <div class="time-pill" id="firebase-status-pill" style="background: #064E3B; color: #34D399; font-weight: 700; border: 1px solid #059669;">
-        🟢 Cloud Firestore Live
+      <div class="time-pill" id="firebase-status-pill" role="status">
+        Checking catalog source…
       </div>
       <div class="status-indicator">
-        <span class="pulse-dot"></span>
-        <span>KHAMMAM MORNING OPS LIVE</span>
+        <span>Zone metrics &amp; dispatch are samples</span>
       </div>
       <div class="time-pill" id="live-time">07:30 AM IST</div>
     </div>
@@ -44,8 +43,8 @@
       <div class="metric-icon blue">🏪</div>
       <div class="metric-content">
         <span class="metric-label">PARTNER KITCHENS</span>
-        <span class="metric-value" id="total-shops-kpi">4 Shops</span>
-        <span class="metric-sub positive" id="open-shops-kpi">3 Open • 1 Closed</span>
+        <span class="metric-value" id="total-shops-kpi">—</span>
+        <span class="metric-sub positive" id="open-shops-kpi">—</span>
       </div>
     </div>
 
@@ -97,7 +96,7 @@
       <span>🗺️</span> Khammam 4-Zone Order Heatmap
     </button>
     <button class="tab-btn" data-tab="dispatch-tab">
-      <span>📦</span> Live Gate Drop Dispatch Feed
+      <span>📦</span> Sample Gate Drop Dispatch Feed
     </button>
   </nav>
 
@@ -111,7 +110,7 @@
           <p class="section-subtitle">Manage daily open/closed status, holiday schedules, closure reasons, and dish pricing.</p>
         </div>
         <div style="display: flex; gap: 8px;">
-          <button class="btn btn-secondary" onclick="seedFirestoreDefaults()" title="Push default Khammam kitchen data to Firebase Cloud Firestore">🚀 Seed to Firestore</button>
+          <button class="btn btn-secondary" onclick="seedFirestoreDefaults(this)" title="Push default Khammam kitchen data to Firebase Cloud Firestore">🚀 Seed to Firestore</button>
           <button class="btn btn-primary" onclick="openAddShopModal()">+ Onboard New Kitchen</button>
         </div>
       </div>
@@ -126,7 +125,7 @@
       <div class="section-header">
         <div>
           <h2 class="section-title">Promotional Offers & Storefront Banners</h2>
-          <p class="section-subtitle">Create discount coupons, festive offers, and announcement banners shown live on customer apps.</p>
+          <p class="section-subtitle">Manage offers in the selected catalog. Browser previews are not published.</p>
         </div>
         <button class="btn btn-primary" onclick="openAddOfferModal()">+ Create New Promo Offer</button>
       </div>
@@ -140,8 +139,8 @@
     <section id="zones-tab" class="tab-panel">
       <div class="section-header">
         <div>
-          <h2 class="section-title">Khammam 4-Zone Route Consolidation & Live Heatmap</h2>
-          <p class="section-subtitle">Real-time order density tracking to eliminate empty delivery miles and allocate drivers.</p>
+          <h2 class="section-title">Khammam 4-Zone Sample Heatmap</h2>
+          <p class="section-subtitle">Example routes and order density, not live driver assignments.</p>
         </div>
         <div class="zone-filter-pill">Khammam Metropolitan Area</div>
       </div>
@@ -177,7 +176,7 @@
       <div class="section-header">
         <div>
           <h2 class="section-title">Morning Gate Drop Dispatch Feed</h2>
-          <p class="section-subtitle">Live status tracking of cluster deliveries, arrival timestamps, and photo proofs.</p>
+          <p class="section-subtitle">Example deliveries. Retry changes this view only; no driver is notified.</p>
         </div>
         <button class="btn btn-secondary" onclick="renderDispatchFeed()">↻ Refresh Logs</button>
       </div>
@@ -218,14 +217,14 @@
           <input type="text" id="edit-shop-reopen" placeholder="e.g. Tomorrow at 6:00 AM or Thursday, 14 Nov">
         </div>
 
-        <h4 style="margin: 16px 0 8px; font-size: 14px; font-weight: 700;">Dishes & Live Pricing:</h4>
+        <h4 style="margin: 16px 0 8px; font-size: 14px; font-weight: 700;">Dishes & Pricing:</h4>
         <div id="edit-shop-dishes" class="dishes-edit-list">
           <!-- Rendered dynamically -->
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeEditShopModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveShopChanges()">Save & Broadcast Changes</button>
+        <button id="edit-shop-save" class="btn btn-primary" onclick="saveShopChanges()">Save Changes</button>
       </div>
     </div>
   </div>
@@ -262,7 +261,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddShopModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveNewShop()">Onboard Kitchen</button>
+        <button class="btn btn-primary" onclick="saveNewShop(this)">Save Kitchen</button>
       </div>
     </div>
   </div>
@@ -280,7 +279,7 @@
           <input type="text" id="offer-code" placeholder="e.g. HUNGR20 or WELCOME50">
         </div>
         <div class="form-group">
-          <label>Headline Description (Shown on mobile banner):</label>
+          <label>Headline Description:</label>
           <input type="text" id="offer-description" placeholder="e.g. Flat ₹20 Off on 5-Day Morning Tiffin Pass">
         </div>
         <div class="form-group">
@@ -302,7 +301,7 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddOfferModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="saveNewOffer()">Publish to App</button>
+        <button class="btn btn-primary" onclick="saveNewOffer(this)">Save Offer</button>
       </div>
     </div>
   </div>

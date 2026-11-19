@@ -6,8 +6,6 @@ import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
-import '../../../../core/services/local_storage_service.dart';
-import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -42,15 +40,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen> with SingleTickerPr
     await Future.delayed(const Duration(milliseconds: 1100));
     if (!mounted) return;
 
-    final isPersistedAuth = await LocalStorageService.instance.isAuthenticated();
-    if (!mounted) return;
-    if (isPersistedAuth) {
-      await ref.read(authProvider.notifier).loadSavedSession();
-      if (!mounted) return;
-      context.go(RouteNames.storefront);
-    } else {
-      context.go(RouteNames.phoneAuth);
-    }
+    // The router resumes verified customers at their gate selection or storefront.
+    context.go(RouteNames.phoneAuth);
   }
 
   @override

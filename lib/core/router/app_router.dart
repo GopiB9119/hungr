@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'identity_redirect.dart';
 import 'route_names.dart';
 import '../animations/smooth_transitions.dart';
 import '../../features/onboarding/presentation/screens/splash_screen.dart';
 import '../../features/auth/presentation/screens/phone_auth_screen.dart';
 import '../../features/auth/presentation/screens/otp_verification_screen.dart';
+import '../../features/auth/presentation/viewmodels/auth_viewmodel.dart';
 import '../../features/onboarding/presentation/screens/cluster_selection_screen.dart';
 import '../../features/storefront/presentation/screens/storefront_screen.dart';
 import '../../features/storefront/presentation/screens/shop_details_screen.dart';
@@ -51,6 +54,10 @@ class AppRouter {
 
   static final GoRouter router = GoRouter(
     initialLocation: RouteNames.splash,
+    redirect: (context, state) => identityRedirect(
+      state.matchedLocation,
+      ProviderScope.containerOf(context, listen: false).read(authProvider.notifier),
+    ),
     routes: [
       GoRoute(
         path: RouteNames.splash,
@@ -135,25 +142,11 @@ class AppRouter {
       ),
       GoRoute(
         path: RouteNames.otpVerify,
-        pageBuilder: (context, state) {
-          String phone = '+91 98765 43210';
-          String name = 'Vamsi Krishna';
-          if (state.extra is Map) {
-            final map = state.extra as Map;
-            phone = (map['phone'] as String?) ?? phone;
-            name = (map['name'] as String?) ?? name;
-          } else if (state.extra is String) {
-            phone = state.extra as String;
-          }
-          return SmoothTransitions.stackSlide(
-            context: context,
-            state: state,
-            child: OtpVerificationScreen(
-              phoneNumber: phone,
-              userName: name,
-            ),
-          );
-        },
+        pageBuilder: (context, state) => SmoothTransitions.stackSlide(
+          context: context,
+          state: state,
+          child: const OtpVerificationScreen(),
+        ),
       ),
       GoRoute(
         path: RouteNames.profile,

@@ -9,17 +9,12 @@ import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/date_time_utils.dart';
-import '../../../../core/widgets/confetti_burst_overlay.dart';
-import '../../../subscription/presentation/viewmodels/subscription_history_viewmodel.dart';
-import '../../../subscription/presentation/viewmodels/referral_viewmodel.dart';
 import '../../domain/tiffin_item_model.dart';
 import '../viewmodels/cart_viewmodel.dart';
 import '../viewmodels/customer_dashboard_viewmodel.dart';
 import '../widgets/pass_card_3d.dart';
 
-/// Flagship Dedicated Checkout Screen
-/// Supports both Single-Day Tiffin Ordering and Subscription Pass Purchasing
-/// with real-time bill breakdown, coupon applications, and UPI / Cash-on-Drop payments.
+/// Cart review only. No order placement or payment backend is connected.
 class CheckoutScreen extends ConsumerStatefulWidget {
   const CheckoutScreen({super.key});
 
@@ -30,8 +25,6 @@ class CheckoutScreen extends ConsumerStatefulWidget {
 class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final TextEditingController _couponController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
-  final GlobalKey<ConfettiBurstOverlayState> _confettiKey = GlobalKey();
-  bool _isPlacingOrder = false;
   String? _couponError;
 
   @override
@@ -58,169 +51,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     });
   }
 
-  Future<void> _handlePlaceOrder(CustomerDashboardState customerState, CartState cartState) async {
-    if (_isPlacingOrder) return;
-    setState(() => _isPlacingOrder = true);
-    HapticFeedback.mediumImpact();
-
-    // Simulate payment intent processing
-    await Future.delayed(const Duration(milliseconds: 700));
-
-    if (!mounted) return;
-
-    // Trigger celebratory confetti
-    _confettiKey.currentState?.burstAtCenter();
-
-    final isSingleDay = cartState.orderMode == OrderMode.singleDay;
-    final bagToken = DateTimeUtils.generateBagToken(customerState.selectedCluster.name, 4);
-    final targetDateLabel = DateTimeUtils.targetDeliveryLabel();
-
-    if (isSingleDay) {
-      // Single-Day Tiffin Order: Create a fresh single-day ticket in the dashboard
-      final selectedItems = cartState.itemQuantities.keys.toList();
-      ref.read(customerDashboardProvider.notifier).activateNewPass(
-            tier: PassTierType.trial3Day,
-            combo: 'A',
-            addons: selectedItems.toSet(),
-            companionMeals: cartState.roommateMealCount,
-            bagToken: bagToken,
-          );
+  void _backToBrowsing() {
+    if (context.canPop()) {
+      context.pop();
     } else {
-      // Pass Order: Activate Pass in Dashboard
-      final tier = cartState.selectedPassTier ?? PassTierType.routine7Day;
-      ref.read(customerDashboardProvider.notifier).activateNewPass(
-            tier: tier,
-            combo: 'A',
-            addons: cartState.itemQuantities.keys.toSet(),
-            autoRotateSpecialties: cartState.autoRotatePassMenu,
-            companionMeals: cartState.roommateMealCount,
-            bagToken: bagToken,
-          );
-
-      // Record in Subscription History
-      ref.read(subscriptionHistoryProvider.notifier).addSubscription(
-            tier: tier,
-            combo: 'A',
-            addons: cartState.itemQuantities.keys.toSet(),
-            totalAmount: cartState.totalPayable,
-            clusterName: customerState.selectedCluster.name,
-          );
+      context.go(RouteNames.storefront);
     }
-
-    // Reset Cart
-    ref.read(cartViewModelProvider.notifier).reset();
-
-    // Show Confirmation Dialog
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogCtx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: Color(0xFFECFDF5),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.check_circle_rounded, color: AppColors.neonMint, size: 40),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isSingleDay ? 'Morning Drop Confirmed!' : 'Pass Activated Successfully!',
-              style: AppTypography.headlineMedium.copyWith(color: AppColors.textPrimary),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            // Parcel Bag Token Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEFF6FF),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF93C5FD)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    'YOUR PARCEL BAG TOKEN',
-                    style: AppTypography.monoBadge.copyWith(
-                      color: const Color(0xFF1D4ED8),
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    bagToken,
-                    style: AppTypography.headlineLarge.copyWith(
-                      color: const Color(0xFF1E40AF),
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Your breakfast arrives on $targetDateLabel at ${cartState.selectedDeliverySlot} at ${customerState.selectedCluster.name}.',
-              style: AppTypography.bodyMedium.copyWith(color: AppColors.textSecondary, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            // WhatsApp Gate Drop Alert Pill
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.mark_chat_unread_rounded, size: 16, color: Color(0xFF16A34A)),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Automated WhatsApp Drop Alert will ping you the moment Bag $bagToken is placed at the gate security desk.',
-                      style: AppTypography.caption.copyWith(
-                        color: const Color(0xFF15803D),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.of(dialogCtx).pop();
-                  context.go(RouteNames.ticketCalendar);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.zomatoRed,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text('View Morning Ticket ➔', style: AppTypography.labelLarge.copyWith(color: Colors.white)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    setState(() => _isPlacingOrder = false);
   }
 
   @override
@@ -234,23 +70,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(RouteNames.storefront);
-        }
+        if (!didPop) _backToBrowsing();
       },
-      child: ConfettiBurstOverlay(
-        key: _confettiKey,
-        child: FluidGestureDismissible(
-          onDismiss: () {
-            if (context.canPop()) {
-              context.pop();
-            } else {
-              context.go(RouteNames.storefront);
-            }
-          },
+      child: FluidGestureDismissible(
+          onDismiss: _backToBrowsing,
           child: Scaffold(
             backgroundColor: AppColors.obsidianBackground,
             appBar: AppBar(
@@ -258,26 +81,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               elevation: 0,
               leading: IconButton(
                 icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 18),
-                onPressed: () {
-                  if (context.canPop()) {
-                    context.pop();
-                  } else {
-                    context.go(RouteNames.storefront);
-                  }
-                },
+                onPressed: _backToBrowsing,
               ),
               title: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isSingleDay ? 'Checkout • Single-Day Drop' : 'Checkout • Morning Pass',
+                    isSingleDay ? 'Review cart • Single-day meal' : 'Review cart • Morning pass',
                     style: AppTypography.titleLarge.copyWith(
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
                     ),
                   ),
                   Text(
-                    'Delivering to ${customerState.selectedCluster.name}',
+                    'Selected gate: ${customerState.selectedCluster.name}',
                     style: AppTypography.caption.copyWith(
                       color: AppColors.textSecondary,
                       fontSize: 11,
@@ -291,8 +108,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   icon: const Icon(Icons.delete_outline_rounded, color: AppColors.urgentCrimson),
                   tooltip: 'Clear Cart',
                   onPressed: () {
-                    cartNotifier.clearCart();
-                    context.pop();
+                    cartNotifier.reset();
+                    _backToBrowsing();
                   },
                 ),
               ],
@@ -355,13 +172,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                             .slideY(begin: 0.07, end: 0, curve: Curves.easeOutCubic),
                         const SizedBox(height: 12),
 
-                        // 7. Payment Method Selector (Slot 7: 260ms)
-                        _buildPaymentSelector(cartState, cartNotifier)
-                            .animate()
-                            .fadeIn(delay: 260.ms, duration: 280.ms)
-                            .slideY(begin: 0.07, end: 0, curve: Curves.easeOutCubic),
-                        const SizedBox(height: 12),
-
                         // 8. Detailed Bill Breakdown (Slot 8: 300ms)
                         _buildBillSummary(cartState)
                             .animate()
@@ -371,14 +181,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       ],
                     ),
                   ),
-            bottomSheet: cartState.isEmpty
+            bottomNavigationBar: cartState.isEmpty
                 ? null
-                : _buildStickyPayBar(customerState, cartState)
-                    .animate()
-                    .fadeIn(delay: 180.ms, duration: 320.ms)
-                    .slideY(begin: 0.20, end: 0, curve: Curves.fastLinearToSlowEaseIn),
+                : CheckoutUnavailableFooter(total: cartState.totalPayable),
           ),
-        ),
       ),
     );
   }
@@ -411,7 +217,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => context.pop(),
+              onPressed: _backToBrowsing,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.zomatoRed,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -474,23 +280,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           fontSize: 9,
                           fontWeight: FontWeight.bold,
                           color: AppColors.neonMint,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: Text(
-                        DateTimeUtils.generateBagToken(customerState.selectedCluster.name, 4),
-                        style: AppTypography.monoBadge.copyWith(
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1D4ED8),
                         ),
                       ),
                     ),
@@ -578,7 +367,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   const Icon(Icons.access_time_rounded, size: 16, color: AppColors.goldenAmber),
                   const SizedBox(width: 6),
                   Text(
-                    'Select Morning Delivery Slot',
+                    'Preferred morning slot',
                     style: AppTypography.titleSmall.copyWith(
                       fontWeight: FontWeight.w700,
                       color: AppColors.textPrimary,
@@ -811,56 +600,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ],
             ),
-            if (cartState.selectedPassTier == PassTierType.trial3Day) ...[
-              const SizedBox(height: 12),
-              InkWell(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  context.push(RouteNames.referral);
-                },
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: ref.watch(referralProvider).isRewardUnlocked
-                        ? const Color(0xFFECFDF5)
-                        : const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: ref.watch(referralProvider).isRewardUnlocked
-                          ? const Color(0xFFA7F3D0)
-                          : const Color(0xFFFDE68A),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.card_giftcard_rounded,
-                        size: 16,
-                        color: ref.watch(referralProvider).isRewardUnlocked
-                            ? AppColors.neonMint
-                            : AppColors.goldenAmber,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          ref.watch(referralProvider).isRewardUnlocked
-                              ? '3 Referrals Completed! Claim this 3-Day Pass for ₹0 ➔'
-                              : 'Want this pass for FREE? Refer 3 friends who order to unlock for ₹0 (${ref.watch(referralProvider).qualifiedOrderCount}/3) ➔',
-                          style: AppTypography.caption.copyWith(
-                            color: ref.watch(referralProvider).isRewardUnlocked
-                                ? AppColors.neonMint
-                                : const Color(0xFF92400E),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
             // 1-Tap Smart Pass Menu Auto-Rotation
             const SizedBox(height: 12),
             Container(
@@ -1314,216 +1053,6 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
-  Widget _buildPaymentSelector(CartState cartState, CartViewModel cartNotifier) {
-    final activeMethods = [
-      {'name': 'Google Pay', 'icon': Icons.account_balance_wallet_rounded, 'tag': 'RECOMMENDED (UPI)'},
-      {'name': 'PhonePe', 'icon': Icons.payment_rounded, 'tag': 'UPI'},
-      {'name': 'Paytm', 'icon': Icons.qr_code_scanner_rounded, 'tag': 'UPI / WALLET'},
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: AppDimensions.radius16,
-        border: Border.all(color: AppColors.charcoalBorder),
-        boxShadow: const [
-          BoxShadow(color: Color(0x08000000), blurRadius: 8, offset: Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.credit_card_rounded, size: 16, color: AppColors.textSecondary),
-              const SizedBox(width: 6),
-              Text(
-                'Payment Method',
-                style: AppTypography.titleSmall.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '100% PRE-PAID SECURE',
-                  style: AppTypography.monoBadge.copyWith(
-                    color: AppColors.neonMint,
-                    fontSize: 8.5,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Active UPI Methods
-          ...activeMethods.map((m) {
-            final String name = m['name'] as String;
-            final IconData icon = m['icon'] as IconData;
-            final String tag = m['tag'] as String;
-            final isSelected = cartState.paymentMethod == name;
-
-            return GestureDetector(
-              onTap: () {
-                HapticFeedback.lightImpact();
-                cartNotifier.setPaymentMethod(name);
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppColors.zomatoRedSurface : const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isSelected ? AppColors.zomatoRed : AppColors.charcoalBorder,
-                    width: isSelected ? 1.4 : 1.0,
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(icon, size: 20, color: isSelected ? AppColors.zomatoRed : AppColors.textSecondary),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          Text(
-                            name,
-                            style: AppTypography.labelLarge.copyWith(
-                              fontSize: 13,
-                              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                              color: isSelected ? AppColors.zomatoRed : AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: isSelected ? AppColors.zomatoRed.withOpacity(0.12) : const Color(0xFFE5E7EB),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              tag,
-                              style: AppTypography.monoBadge.copyWith(
-                                color: isSelected ? AppColors.zomatoRed : AppColors.textSecondary,
-                                fontSize: 8.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Radio<String>(
-                      value: name,
-                      groupValue: cartState.paymentMethod,
-                      activeColor: AppColors.zomatoRed,
-                      onChanged: (val) {
-                        if (val != null) cartNotifier.setPaymentMethod(val);
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-
-          // Disabled Cash on Delivery Option (Requirement 1)
-          InkWell(
-            onTap: () {
-              HapticFeedback.heavyImpact();
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: AppColors.urgentCrimson,
-                  behavior: SnackBarBehavior.floating,
-                  content: Text(
-                    'Cash on Delivery is NOT available for 7:30 AM drops. All morning tiffins are prepaid via UPI to guarantee zero-contact 2-minute gate drops.',
-                    style: AppTypography.labelLarge.copyWith(color: Colors.white, fontSize: 12),
-                  ),
-                ),
-              );
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3F4F6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE5E7EB)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.money_off_rounded, size: 20, color: Color(0xFF9CA3AF)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Row(
-                          children: [
-                            Text(
-                              'Cash on Delivery',
-                              style: AppTypography.labelLarge.copyWith(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: const Color(0xFF9CA3AF),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEE2E2),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: Text(
-                                'NOT AVAILABLE',
-                                style: AppTypography.monoBadge.copyWith(
-                                  color: AppColors.urgentCrimson,
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Radio<String>(
-                        value: 'Cash on Delivery',
-                        groupValue: null,
-                        onChanged: null,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.only(left: 30),
-                    child: Text(
-                      'Disabled for morning gate drops to prevent delivery bottlenecks. Hostel security guards will not accept unpaid parcels.',
-                      style: AppTypography.caption.copyWith(
-                        color: const Color(0xFF6B7280),
-                        fontSize: 10,
-                        height: 1.3,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBillSummary(CartState cartState) {
     final isSingleDay = cartState.orderMode == OrderMode.singleDay;
     final int subtotal = isSingleDay ? cartState.itemsSubtotal : cartState.passSubtotal;
@@ -1641,7 +1170,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'To Pay',
+                    'Estimated total',
                     style: AppTypography.titleLarge.copyWith(fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                   ),
                   Text(
@@ -1665,88 +1194,22 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     );
   }
 
-  Widget _buildStickyPayBar(CustomerDashboardState customerState, CartState cartState) {
-    final bool isCod = cartState.paymentMethod == 'Cash on Delivery';
+}
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.charcoalBorder, width: 1)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 16,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'TOTAL PAYABLE',
-                  style: AppTypography.monoBadge.copyWith(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                Text(
-                  '₹${cartState.totalPayable}',
-                  style: AppTypography.monoPrice.copyWith(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(width: 20),
-            Expanded(
-              child: SizedBox(
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: (_isPlacingOrder || isCod) ? null : () => _handlePlaceOrder(customerState, cartState),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isCod ? const Color(0xFFE5E7EB) : AppColors.zomatoRed,
-                    disabledBackgroundColor: const Color(0xFFE5E7EB),
-                    foregroundColor: Colors.white,
-                    elevation: isCod ? 0 : 2,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  child: _isPlacingOrder
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              isCod ? 'COD Not Available • Select UPI' : 'Pay ₹${cartState.totalPayable}',
-                              style: AppTypography.labelLarge.copyWith(
-                                color: isCod ? const Color(0xFF6B7280) : Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13.5,
-                              ),
-                            ),
-                            if (!isCod) ...[
-                              const SizedBox(width: 6),
-                              const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
-                            ],
-                          ],
-                        ),
-                ),
-              ),
-            ),
-          ],
-        ),
+class CheckoutUnavailableFooter extends StatelessWidget {
+  const CheckoutUnavailableFooter({super.key, required this.total});
+
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: ListTile(
+        tileColor: Colors.white,
+        leading: const Icon(Icons.info_outline),
+        title: Text('Checkout unavailable • Estimate ₹$total'),
+        subtitle: const Text('You can edit your cart. No payment is taken and no delivery is booked.'),
       ),
     );
   }

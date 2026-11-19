@@ -25,7 +25,7 @@ class LegalPolicyScreen extends StatelessWidget {
         backgroundColor: AppColors.obsidianBackground,
         appBar: AppBar(
           title: Text(
-            'Legal Terms & Privacy',
+            'Purchases & Privacy',
             style: AppTypography.headlineMedium.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
           ),
           backgroundColor: Colors.white,
@@ -46,69 +46,37 @@ class LegalPolicyScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Terms of Service', style: AppTypography.displayMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Governing hyper-batched morning tiffin subscriptions in Khammam clusters.',
-              style: AppTypography.bodySmall,
-            ),
+            Text('Purchases', style: AppTypography.displayMedium),
             const SizedBox(height: AppDimensions.p16),
 
             _buildClauseCard(
-              title: '1. 9:00 PM Hard Cutoff Rule',
-              content:
-                  'All order modifications, combo switches, and skips close strictly at 21:00:00 IST the night prior. '
-                  'Unskipped meals are automatically locked, assigned to kitchen units, and deducted from your active pass balance.',
+              title: 'Pass purchases are unavailable',
+              content: 'You can browse passes, but this version does not take payments or confirm a purchase.',
             ),
             const SizedBox(height: AppDimensions.p12),
 
             _buildClauseCard(
-              title: '2. Pass Validity & Non-Refundability',
-              content:
-                  'Subscription passes (3-Day, 7-Day, 15-Day) are non-refundable to bank or UPI accounts. '
-                  'Skipped meals extend your delivery schedule up to the hard expiry ceiling (5, 10, or 20 calendar days). '
-                  'Unused tickets past the ceiling are forfeited.',
-            ),
-            const SizedBox(height: AppDimensions.p12),
-
-            _buildClauseCard(
-              title: '3. Gate Drop & Transfer of Risk',
-              content:
-                  'Deliveries are executed between 07:30 AM and 08:30 AM at your registered cluster drop point (hostel gate or watchman desk). '
-                  'Photo upload at your drop gate constitutes conclusive proof of delivery. '
-                  'Hungr is not responsible for lost packages left unattended past the 2-minute gate drop.',
-            ),
-            const SizedBox(height: AppDimensions.p12),
-
-            _buildClauseCard(
-              title: '4. Allergy & Consumption Notice',
+              title: 'Allergy & Consumption Notice',
               content:
                   'Food items are packaged in food-grade breathable covers and may contain nuts (groundnut chutney), peanuts, gluten, and dairy. '
                   'Tiffins must be consumed within 90 minutes of delivery.',
             ),
 
             const SizedBox(height: AppDimensions.p24),
-            Text('Privacy Policy (DPDP Act)', style: AppTypography.displayMedium),
-            const SizedBox(height: 8),
-            Text(
-              'In full compliance with India’s Digital Personal Data Protection (DPDP) Act and Google Play Store policies.',
-              style: AppTypography.bodySmall,
-            ),
+            Text('Privacy', style: AppTypography.displayMedium),
             const SizedBox(height: AppDimensions.p16),
 
             _buildClauseCard(
-              title: 'Data Collection Scope',
-              content:
-                  'Hungr collects only minimal essential data: your Name, Phone Number, and Delivery Cluster Gate. '
-                  'We do not track continuous GPS location or require exact apartment door numbers.',
+              title: 'Customer profile',
+              content: 'Hungr uses Firebase to verify your phone number. Your customer profile stores your '
+                  'name, verified number and selected delivery gate.',
             ),
             const SizedBox(height: AppDimensions.p12),
 
             _buildClauseCard(
-              title: 'Payment Data Handling',
-              content:
-                  'Payments are processed via RBI-compliant UPI intent gateways (Razorpay). '
-                  'Hungr never stores, views, or logs bank account, UPI PIN, or credit/debit card information.',
+              title: 'Signing out and account deletion',
+              content: 'Signing out ends your session on this device. It does not erase your account or '
+                  'records held by the service. In-app account deletion is unavailable in this version.',
             ),
 
             const SizedBox(height: 40),

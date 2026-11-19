@@ -8,7 +8,7 @@ import '../../../../core/router/route_names.dart';
 import '../../../../core/widgets/dark_shimmer.dart';
 import '../../domain/cluster_model.dart';
 import '../../data/cluster_repository.dart';
-import '../../../storefront/presentation/viewmodels/customer_dashboard_viewmodel.dart';
+import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
 
 /// Clean Morning White Gate Selection Screen
 /// Allows students and residents anywhere across Khammam to select an existing cluster
@@ -26,6 +26,7 @@ class _ClusterSelectionScreenState extends ConsumerState<ClusterSelectionScreen>
   String _searchQuery = '';
   String _selectedSector = 'All Khammam';
   bool _isLoading = true;
+  bool _isSaving = false;
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -46,14 +47,41 @@ class _ClusterSelectionScreenState extends ConsumerState<ClusterSelectionScreen>
     final clusters = await repo.fetchActiveClusters();
     if (mounted) {
       setState(() {
-        _allClusters = clusters;
+        final saved = ref.read(authProvider).gate;
+        _allClusters = [
+          if (saved != null && !clusters.any((gate) => gate.id == saved.id)) saved,
+          ...clusters,
+        ];
         _isLoading = false;
-        final currentSelected = ref.read(customerDashboardProvider).selectedCluster;
-        _selectedCluster = clusters.firstWhere(
-          (c) => c.id == currentSelected.id,
-          orElse: () => clusters.first,
-        );
+        _selectedCluster = saved ?? (_allClusters.isEmpty ? null : _allClusters.first);
       });
+    }
+  }
+
+  void _back() {
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(ref.read(authProvider.notifier).hasSavedGate ? RouteNames.storefront : RouteNames.profile);
+    }
+  }
+
+  Future<void> _confirmGate() async {
+    final gate = _selectedCluster;
+    if (gate == null || _isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      await ref.read(authProvider.notifier).updateGate(gate);
+      if (!mounted) return;
+      HapticFeedback.mediumImpact();
+      context.go(RouteNames.storefront);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save your delivery gate. Please try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -303,11 +331,7 @@ class _ClusterSelectionScreenState extends ConsumerState<ClusterSelectionScreen>
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go(RouteNames.storefront);
-        }
+        _back();
       },
       child: Scaffold(
         backgroundColor: AppColors.obsidianBackground,
@@ -325,13 +349,7 @@ class _ClusterSelectionScreenState extends ConsumerState<ClusterSelectionScreen>
           scrolledUnderElevation: 1,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 18),
-            onPressed: () {
-              if (context.canPop()) {
-                context.pop();
-              } else {
-                context.go(RouteNames.storefront);
-              }
-            },
+            onPressed: _back,
           ),
           actions: [
             TextButton.icon(
@@ -626,14 +644,7 @@ class _ClusterSelectionScreenState extends ConsumerState<ClusterSelectionScreen>
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: _selectedCluster == null
-                        ? null
-                        : () {
-                            HapticFeedback.mediumImpact();
-                            ref.read(selectedClusterProvider.notifier).state = _selectedCluster;
-                            ref.read(customerDashboardProvider.notifier).updateCluster(_selectedCluster!);
-                            context.go(RouteNames.storefront);
-                          },
+                    onPressed: _selectedCluster == null || _isSaving ? null : _confirmGate,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.zomatoRed,
                       foregroundColor: Colors.white,

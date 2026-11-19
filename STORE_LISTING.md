@@ -1,5 +1,10 @@
-# Hungr (Hungr) — Official Google Play Store & Apple App Store Listing Portfolio
-**Version:** 1.0.1 (Build 2 - Production Release)  
+# Hungr — unpublished store listing draft
+**Do not publish this draft.** It describes planned delivery operations. The
+current app cannot take payments or issue purchased meals. Verify every price,
+delivery promise, contact channel, privacy statement and platform requirement
+against the release build before using any of this copy.
+
+**App version in this checkout:** 1.0.10 (build 11)
 **Package Name:** `com.hungr.app`  
 **Target Category:** Food & Drink / Subscriptions  
 **Content Rating:** Everyone (PEGI 3 / USK 0)  
@@ -73,15 +78,14 @@ HOW IT WORKS IN 3 SIMPLE STEPS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 1. Select your hostel or apartment cluster from our verified drop point list.
 2. Choose your 3, 7, or 15-Day Pass and select your preferred tomorrow combo.
-3. Slide to unlock via secure Razorpay UPI intent—your hot tiffin arrives tomorrow at 7:30 AM!
+3. Checkout is not yet available. No payment is collected and no delivery is booked.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DATA SAFETY & PRIVACY PROMISE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Hungr is 100% compliant with India’s Digital Personal Data Protection (DPDP) Act and Google Play Store Developer Policies:
-• No invasive location tracking (you choose your gate drop point from a preset list).
-• Secure RBI-authorized UPI payment processing via Razorpay.
-• In-app "Delete Account" button for immediate, permanent data erasure.
+• You choose a gate drop point from a preset list.
+• Payments are not enabled in this version.
+• Account deletion is not yet implemented. Verify the deletion and retention process before launch.
 
 Want your hostel added to our delivery route?
 Chat with our Khammam Concierge Team on WhatsApp: +91 98765 43210

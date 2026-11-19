@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../../core/constants/business_rules.dart';
 import '../../../../core/utils/date_time_utils.dart';
 import '../domain/meal_ticket_model.dart';
 
@@ -9,65 +8,7 @@ final ticketRepositoryProvider = Provider<TicketRepository>((ref) {
 
 class TicketRepository {
   Future<List<MealTicket>> fetchActiveUserTickets(String userId) async {
-    // In production, queries firestore:
-    // FirebaseFirestore.instance.collection('meal_tickets').where('userId', isEqualTo: userId).orderBy('deliveryDate')
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-
-    final now = DateTimeUtils.nowIst();
-    final tomorrow = DateTime.utc(now.year, now.month, now.day + 1);
-
-    return [
-      MealTicket(
-        ticketId: 't_001',
-        passId: 'pass_7d_user1',
-        userId: userId,
-        clusterId: 'cluster_01',
-        clusterName: 'Sri Sai Boys Hostel Gate',
-        deliveryDate: tomorrow,
-        comboSelection: 'A',
-        addOns: const [BusinessRules.addonBoiledEggsId],
-        slot: MealSlotType.morning,
-        assignedVendorId: 'aunty_1',
-        status: TicketStatusType.scheduled,
-      ),
-      MealTicket(
-        ticketId: 't_002',
-        passId: 'pass_7d_user1',
-        userId: userId,
-        clusterId: 'cluster_01',
-        clusterName: 'Sri Sai Boys Hostel Gate',
-        deliveryDate: tomorrow.add(const Duration(days: 1)),
-        comboSelection: 'B',
-        addOns: const [BusinessRules.addonFilterCoffeeId],
-        slot: MealSlotType.morning,
-        assignedVendorId: 'aunty_2',
-        status: TicketStatusType.scheduled,
-      ),
-      MealTicket(
-        ticketId: 't_003',
-        passId: 'pass_7d_user1',
-        userId: userId,
-        clusterId: 'cluster_01',
-        clusterName: 'Sri Sai Boys Hostel Gate',
-        deliveryDate: tomorrow.add(const Duration(days: 2)),
-        comboSelection: 'A',
-        slot: MealSlotType.morning,
-        assignedVendorId: 'aunty_1',
-        status: TicketStatusType.scheduled,
-      ),
-      MealTicket(
-        ticketId: 't_004',
-        passId: 'pass_7d_user1',
-        userId: userId,
-        clusterId: 'cluster_01',
-        clusterName: 'Sri Sai Boys Hostel Gate',
-        deliveryDate: tomorrow.add(const Duration(days: 3)),
-        comboSelection: 'B',
-        slot: MealSlotType.morning,
-        assignedVendorId: 'aunty_2',
-        status: TicketStatusType.scheduled,
-      ),
-    ];
+    throw UnsupportedError('Account ticket lookup is unavailable.');
   }
 
   /// Enforces 9:00 PM cutoff and pass ceiling before skipping ticket

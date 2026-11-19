@@ -8,9 +8,12 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/widgets/obsidian_card.dart';
 import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
+import '../../../onboarding/data/cluster_repository.dart';
+import '../../../storefront/presentation/viewmodels/cart_viewmodel.dart';
 import '../../../storefront/presentation/viewmodels/customer_dashboard_viewmodel.dart';
 import '../../../subscription/presentation/viewmodels/subscription_history_viewmodel.dart';
 import '../../../subscription/presentation/viewmodels/referral_viewmodel.dart';
+import '../../../ticket_calendar/presentation/viewmodels/ticket_calendar_viewmodel.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -22,6 +25,28 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _deliveryPingEnabled = true;
   String _dietaryPref = 'Vegetarian (Pure)';
+
+  Future<void> _signOut() async {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final router = GoRouter.of(context);
+    if (!await container.read(authProvider.notifier).logout()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not sign out. Please try again.')),
+        );
+      }
+      return;
+    }
+    // These providers otherwise live past the removal of the signed-in pages.
+    container.invalidate(clusterRepositoryProvider);
+    container.invalidate(selectedClusterProvider);
+    container.invalidate(cartProvider);
+    container.invalidate(customerDashboardProvider);
+    container.invalidate(referralProvider);
+    container.invalidate(subscriptionHistoryProvider);
+    container.invalidate(ticketCalendarViewModelProvider);
+    router.go(RouteNames.phoneAuth);
+  }
 
   void _showSignOutDialog(BuildContext context) {
     showDialog(
@@ -51,8 +76,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
                 HapticFeedback.mediumImpact();
-                ref.read(authProvider.notifier).logout();
-                context.go(RouteNames.phoneAuth);
+                _signOut();
               },
               child: const Text('Sign Out'),
             ),
@@ -80,35 +104,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             ],
           ),
           content: Text(
-            'Under DPDP Act & Google Play policy, this will permanently delete your phone number, pass history, and delivery records. This action cannot be undone.',
+            'Account deletion is unavailable in this version. No account or delivery data has been deleted.',
             style: AppTypography.bodyMedium,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.urgentCrimson,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () {
-                Navigator.of(context).pop();
-                HapticFeedback.heavyImpact();
-                ref.read(authProvider.notifier).logout();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    backgroundColor: AppColors.urgentCrimson,
-                    content: Text(
-                      'Account & personal data deleted successfully.',
-                      style: AppTypography.labelLarge,
-                    ),
-                  ),
-                );
-                context.go(RouteNames.phoneAuth);
-              },
-              child: const Text('Delete Permanently'),
+              child: const Text('Close'),
             ),
           ],
         );
@@ -167,7 +169,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     radius: 30,
                     backgroundColor: AppColors.zomatoRedSurface,
                     child: Text(
-                      authState.userName.isNotEmpty ? authState.userName[0].toUpperCase() : 'V',
+                      authState.userName.isNotEmpty ? authState.userName[0].toUpperCase() : '–',
                       style: AppTypography.displayMedium.copyWith(
                         color: AppColors.zomatoRed,
                         fontWeight: FontWeight.bold,
@@ -196,7 +198,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                             borderRadius: AppDimensions.radius8,
                           ),
                           child: Text(
-                            'STUDENT / RESIDENT VERIFIED',
+                            'PHONE VERIFIED',
                             style: AppTypography.monoBadge.copyWith(color: AppColors.neonMint, fontSize: 9),
                           ),
                         ),
@@ -272,7 +274,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ListTile(
                     leading: const Icon(Icons.location_on_outlined, color: AppColors.zomatoRed),
                     title: Text('Delivery Drop Point', style: AppTypography.titleMedium),
-                    subtitle: Text(dashboardState.selectedCluster.name, style: AppTypography.bodySmall),
+                    subtitle: Text(authState.gate?.name ?? 'No delivery gate selected', style: AppTypography.bodySmall),
                     trailing: const Icon(Icons.chevron_right, color: AppColors.textSubtle),
                     onTap: () => context.push(RouteNames.clusterSelection),
                   ),
@@ -349,8 +351,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const Divider(color: AppColors.surfaceHighlight),
                   ListTile(
                     leading: const Icon(Icons.gavel_outlined, color: AppColors.textPrimary),
-                    title: Text('Terms & Privacy Policy', style: AppTypography.titleMedium),
-                    subtitle: Text('DPDP Act, 9:00 PM cutoff, Gate drop SOP', style: AppTypography.bodySmall),
+                    title: Text('Purchases & Privacy', style: AppTypography.titleMedium),
+                    subtitle: Text('Pass availability, profile data and account deletion', style: AppTypography.bodySmall),
                     trailing: const Icon(Icons.chevron_right, color: AppColors.textSubtle),
                     onTap: () => context.push(RouteNames.legalPolicy),
                   ),
@@ -365,7 +367,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   ListTile(
                     leading: const Icon(Icons.delete_outline, color: AppColors.urgentCrimson),
                     title: Text('Delete Account', style: AppTypography.titleMedium.copyWith(color: AppColors.urgentCrimson)),
-                    subtitle: Text('Permanent account and data erasure', style: AppTypography.bodySmall),
+                    subtitle: Text('Deletion unavailable in this version', style: AppTypography.bodySmall),
                     onTap: () => _showDeleteAccountDialog(context),
                   ),
                 ],

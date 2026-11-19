@@ -12,14 +12,11 @@ final tiffinShopsProvider =
 class TiffinShopsViewModel extends StateNotifier<List<TiffinShop>> {
   StreamSubscription<List<TiffinShop>>? _firestoreSubscription;
 
-  TiffinShopsViewModel() : super(TiffinShop.standardShops) {
-    _subscribeToLiveFirestoreCatalog();
-  }
-
-  /// Listens to real-time Cloud Firestore updates published by Web Admin
-  void _subscribeToLiveFirestoreCatalog() {
+  TiffinShopsViewModel({Stream<List<TiffinShop>>? catalogStream})
+      : super(TiffinShop.standardShops) {
     try {
-      _firestoreSubscription = FirebaseService.instance.streamTiffinShops().listen(
+      final stream = catalogStream ?? FirebaseService.instance.streamTiffinShops();
+      _firestoreSubscription = stream.listen(
         (remoteShops) {
           if (remoteShops.isNotEmpty) {
             state = remoteShops;
