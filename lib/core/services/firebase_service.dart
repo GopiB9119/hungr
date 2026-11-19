@@ -224,4 +224,170 @@ class FirebaseService {
       return Stream.value(<Map<String, dynamic>>[]);
     }
   }
+
+  // ==========================================
+  // 4. FCM PUSH NOTIFICATIONS & RETENTION
+  // ==========================================
+
+  /// Sync device FCM token to user document and global fcm_tokens collection
+  Future<void> syncFcmToken(String token) async {
+    try {
+      final user = currentUser;
+      if (user != null) {
+        await firestore.collection('users').doc(user.uid).set({
+          'fcmToken': token,
+          'fcmUpdatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      await firestore.collection('fcm_tokens').doc(token).set({
+        'token': token,
+        'userId': user?.uid,
+        'phoneNumber': user?.phoneNumber,
+        'updatedAt': FieldValue.serverTimestamp(),
+        'platform': 'android',
+      }, SetOptions(merge: true));
+      debugPrint('✅ [FCM] Token synced to Firestore successfully');
+    } catch (e) {
+      debugPrint('⚠️ [FCM sync notice]: $e');
+    }
+  }
+
+  /// Records an active cart session to power Swiggy/Zomato style abandonment recovery nudges
+  Future<void> trackAbandonedCart({
+    required String phone,
+    required Map<String, int> items,
+    required int subtotal,
+  }) async {
+    try {
+      if (items.isEmpty) {
+        await clearAbandonedCart(phone);
+        return;
+      }
+      final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+      await firestore.collection('abandoned_carts').doc(cleanPhone).set({
+        'phone': phone,
+        'cleanPhone': cleanPhone,
+        'userId': currentUser?.uid,
+        'items': items,
+        'subtotal': subtotal,
+        'status': 'in_cart',
+        'reminded': false,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('🛒 [Cart Tracked] Active cart session recorded in Firestore');
+    } catch (e) {
+      debugPrint('⚠️ [Cart track notice]: $e');
+    }
+  }
+
+  /// Removes cart record upon successful order placement
+  Future<void> clearAbandonedCart(String phone) async {
+    try {
+      final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
+      await firestore.collection('abandoned_carts').doc(cleanPhone).delete();
+      debugPrint('🧹 [Cart Cleared] Abandoned cart record removed upon order');
+    } catch (e) {
+      debugPrint('⚠️ [Cart clear notice]: $e');
+    }
+  }
+
+  // ==========================================
+  // 5. LIVE ORDERS & MEAL TICKETS LEDGER
+  // ==========================================
+
+  /// Records live order and pass purchase to Cloud Firestore (zero dummy data)
+  Future<String> recordOrder({
+    required String userId,
+    required String orderMode, // 'singleDay' or 'subscriptionPass'
+    String? tier,
+    int? days,
+    required Map<String, int> itemQuantities,
+    required int totalAmount,
+    int discountAmount = 0,
+    String? appliedCoupon,
+    required String clusterName,
+    required String bagToken,
+    required String deliveryDate,
+  }) async {
+    try {
+      final orderRef = firestore.collection('orders').doc();
+      final orderData = {
+        'orderId': orderRef.id,
+        'userId': userId,
+        'userUid': currentUser?.uid,
+        'orderMode': orderMode,
+        'tier': tier,
+        'days': days,
+        'items': itemQuantities,
+        'totalAmount': totalAmount,
+        'discountAmount': discountAmount,
+        'appliedCoupon': appliedCoupon,
+        'clusterName': clusterName,
+        'bagToken': bagToken,
+        'deliveryDate': deliveryDate,
+        'status': 'CONFIRMED',
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await orderRef.set(orderData);
+
+      // If subscription pass, record into passes collection
+      if (orderMode == 'subscriptionPass' && days != null) {
+        final passRef = firestore.collection('passes').doc();
+        await passRef.set({
+          'passId': passRef.id,
+          'orderId': orderRef.id,
+          'userId': currentUser?.uid ?? userId,
+          'tier': tier,
+          'totalDays': days,
+          'remainingDays': days,
+          'clusterName': clusterName,
+          'bagToken': bagToken,
+          'status': 'ACTIVE',
+          'startDate': deliveryDate,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
+
+      // Record tomorrow's morning meal ticket
+      final ticketRef = firestore.collection('meal_tickets').doc();
+      await ticketRef.set({
+        'ticketId': ticketRef.id,
+        'orderId': orderRef.id,
+        'userId': currentUser?.uid ?? userId,
+        'clusterName': clusterName,
+        'bagToken': bagToken,
+        'deliveryDate': deliveryDate,
+        'comboSelection': 'A',
+        'slot': 'MORNING_0730',
+        'status': 'SCHEDULED',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('🎉 [Order Recorded] Live order ${orderRef.id} and ticket stored in Cloud Firestore');
+      return orderRef.id;
+    } catch (e) {
+      debugPrint('⚠️ [Record order error]: $e');
+      return 'local_${DateTime.now().millisecondsSinceEpoch}';
+    }
+  }
+
+  /// Real-time stream of user orders
+  Stream<List<Map<String, dynamic>>> streamUserOrders(String userId) {
+    try {
+      return firestore
+          .collection('orders')
+          .where('userId', '==', userId)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snap) => snap.docs.map((d) => d.data()).toList())
+          .handleError((e) {
+        debugPrint('⚠️ [Orders stream notice]: $e');
+        return <Map<String, dynamic>>[];
+      });
+    } catch (e) {
+      return Stream.value(<Map<String, dynamic>>[]);
+    }
+  }
 }

@@ -16,6 +16,9 @@ import '../../domain/tiffin_item_model.dart';
 import '../viewmodels/cart_viewmodel.dart';
 import '../viewmodels/customer_dashboard_viewmodel.dart';
 import '../widgets/pass_card_3d.dart';
+import '../../../../core/services/firebase_service.dart';
+import '../../../../core/services/notification_service.dart';
+import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
 
 /// Flagship Dedicated Checkout Screen
 /// Supports both Single-Day Tiffin Ordering and Subscription Pass Purchasing
@@ -105,6 +108,30 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             totalAmount: cartState.totalPayable,
             clusterName: customerState.selectedCluster.name,
           );
+    }
+
+    // Record Live Order to Cloud Firestore (zero dummy data)
+    final authState = ref.read(authProvider);
+    final userPhone = authState.phoneNumber;
+    try {
+      await FirebaseService.instance.recordOrder(
+        userId: userPhone,
+        orderMode: isSingleDay ? 'singleDay' : 'subscriptionPass',
+        tier: cartState.selectedPassTier?.displayName,
+        days: cartState.selectedPassDays,
+        itemQuantities: cartState.itemQuantities,
+        totalAmount: cartState.totalPayable,
+        discountAmount: cartState.discountAmount,
+        appliedCoupon: cartState.appliedCoupon,
+        clusterName: customerState.selectedCluster.name,
+        bagToken: bagToken,
+        deliveryDate: targetDateLabel,
+      );
+
+      // Clear abandoned cart tracking upon successful order placement
+      await NotificationService.instance.clearCartOnOrderSuccess(userPhone);
+    } catch (e) {
+      debugPrint('Firestore order recording notice: $e');
     }
 
     // Reset Cart

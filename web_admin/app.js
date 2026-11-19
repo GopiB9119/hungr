@@ -767,6 +767,10 @@ document.querySelectorAll('.tab-btn').forEach(button => {
       renderOffers();
     }
 
+    if (targetId === 'notifications-tab') {
+      loadNotificationHistory();
+    }
+
     if (targetId === 'zones-tab' && khammamMap) {
       setTimeout(() => khammamMap.invalidateSize(), 200);
     }
@@ -985,6 +989,167 @@ function filterMapSector(sector, btnElement) {
         khammamMap.flyTo(targetZone.coords, 14.5, { animate: true, duration: 1.0 });
       }
     }
+  }
+}
+
+// ==========================================
+// 10. PUSH NOTIFICATIONS & CUSTOMER RETENTION ENGINE
+// ==========================================
+
+const QUICK_CAMPAIGNS = {
+  cutoff: {
+    title: "45 Mins Left! ⏰ Lock Tomorrow's Breakfast",
+    body: "Slots close strictly at 9:00 PM. Book your morning tiffin pass before kitchens stop accepting orders!",
+    audience: "daily_cutoff_reminders",
+    route: "/storefront"
+  },
+  gate_drop: {
+    title: "Breakfast is at your Gate! 🍱",
+    body: "Your fresh, hot morning tiffin has arrived at the hostel watchman desk. Collect it fresh before 8:30 AM!",
+    audience: "morning_gate_drops",
+    route: "/tickets"
+  },
+  abandoned_cart: {
+    title: "Hot Breakfast Waiting in Your Cart! 🤤",
+    body: "Don't miss out on tomorrow's fresh tiffins. Tap to complete your order with flat ₹20 off using code HUNGR20!",
+    audience: "all_users",
+    route: "/storefront/checkout"
+  },
+  weekend: {
+    title: "Sunday Woodfire Ghee Dosa Drop! 🔥",
+    body: "Sri Venkateshwara Tiffins special crispy woodfire dosas are open for booking. Limited 50 slots available!",
+    audience: "all_users",
+    route: "/storefront"
+  }
+};
+
+function triggerQuickCampaign(type) {
+  const c = QUICK_CAMPAIGNS[type];
+  if (!c) return;
+
+  document.getElementById('notif-title').value = c.title;
+  document.getElementById('notif-body').value = c.body;
+  document.getElementById('notif-audience').value = c.audience;
+  document.getElementById('notif-route').value = c.route;
+  updateNotifPreview();
+
+  if (confirm(`Do you want to dispatch "${c.title}" live to users now?`)) {
+    dispatchCustomNotification();
+  }
+}
+
+function updateNotifPreview() {
+  const title = document.getElementById('notif-title')?.value.trim() || 'Hungr Breakfast Alert 🍱';
+  const body = document.getElementById('notif-body')?.value.trim() || 'Slots close strictly at 9:00 PM. Book your morning tiffin pass now!';
+
+  const pt = document.getElementById('preview-notif-title');
+  const pb = document.getElementById('preview-notif-body');
+  if (pt) pt.innerText = title;
+  if (pb) pb.innerText = body;
+}
+
+document.getElementById('notif-title')?.addEventListener('input', updateNotifPreview);
+document.getElementById('notif-body')?.addEventListener('input', updateNotifPreview);
+
+async function dispatchCustomNotification() {
+  const title = document.getElementById('notif-title')?.value.trim();
+  const body = document.getElementById('notif-body')?.value.trim();
+  const audience = document.getElementById('notif-audience')?.value || 'all_users';
+  const route = document.getElementById('notif-route')?.value || '/storefront';
+
+  if (!title || !body) {
+    alert('Please enter both a notification title and message.');
+    return;
+  }
+
+  const payload = {
+    title,
+    body,
+    audience,
+    route,
+    status: 'QUEUED',
+    createdAt: (typeof firebase !== 'undefined' && firebase.firestore) ? firebase.firestore.FieldValue.serverTimestamp() : new Date().toISOString(),
+  };
+
+  try {
+    if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+      await db.collection('notifications_queue').add(payload);
+      await db.collection('notifications_history').add({
+        title,
+        body,
+        audience,
+        route,
+        sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      alert(`🚀 Push notification "${title}" dispatched live to audience "${audience}"!`);
+      loadNotificationHistory();
+    } else {
+      // Local fallback simulation
+      const localHistory = JSON.parse(localStorage.getItem('hungr_notif_history') || '[]');
+      localHistory.unshift({
+        title,
+        body,
+        audience,
+        route,
+        sentAt: new Date().toLocaleTimeString(),
+      });
+      localStorage.setItem('hungr_notif_history', JSON.stringify(localHistory));
+      alert(`[Demo Mode] Notification queued for ${audience}. In live production mode, this fires via FCM!`);
+      loadNotificationHistory();
+    }
+  } catch (err) {
+    console.error('Error dispatching notification:', err);
+    alert('Failed to dispatch notification: ' + err.message);
+  }
+}
+
+async function loadNotificationHistory() {
+  const list = document.getElementById('notif-history-list');
+  if (!list) return;
+  list.innerHTML = '<div style="color: #94A3B8; font-size: 13px;">Loading dispatch logs...</div>';
+
+  try {
+    if (typeof isFirebaseAvailable !== 'undefined' && isFirebaseAvailable && db) {
+      const snap = await db.collection('notifications_history').orderBy('sentAt', 'desc').limit(15).get();
+      if (snap.empty) {
+        list.innerHTML = '<div style="color: #64748B; font-size: 13px;">No push notifications sent yet. Use the composer above to dispatch your first campaign.</div>';
+        return;
+      }
+      list.innerHTML = snap.docs.map(doc => {
+        const d = doc.data();
+        const dateStr = d.sentAt?.toDate ? d.sentAt.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Recent';
+        return `
+          <div style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: 700; color: #FFFFFF; font-size: 13.5px;">${d.title}</div>
+              <div style="color: #94A3B8; font-size: 12px; margin-top: 2px;">${d.body}</div>
+              <div style="color: #64748B; font-size: 11px; margin-top: 4px;">Target: <strong style="color: #38BDF8;">${d.audience}</strong> • Route: ${d.route}</div>
+            </div>
+            <div style="text-align: right;">
+              <span style="font-size: 11px; color: #10B981; background: #064E3B; padding: 3px 8px; border-radius: 4px; font-weight: 700;">SENT</span>
+              <div style="color: #64748B; font-size: 11px; margin-top: 4px;">${dateStr}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else {
+      const local = JSON.parse(localStorage.getItem('hungr_notif_history') || '[]');
+      if (local.length === 0) {
+        list.innerHTML = '<div style="color: #64748B; font-size: 13px;">No push notifications dispatched yet.</div>';
+        return;
+      }
+      list.innerHTML = local.map(d => `
+        <div style="background: #0F172A; border: 1px solid #334155; border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 700; color: #FFFFFF; font-size: 13.5px;">${d.title}</div>
+            <div style="color: #94A3B8; font-size: 12px;">${d.body}</div>
+          </div>
+          <span style="font-size: 11px; color: #F59E0B; background: #451A03; padding: 3px 8px; border-radius: 4px;">DEMO</span>
+        </div>
+      `).join('');
+    }
+  } catch (e) {
+    list.innerHTML = `<div style="color: #EF4444; font-size: 13px;">Error loading logs: ${e.message}</div>`;
   }
 }
 

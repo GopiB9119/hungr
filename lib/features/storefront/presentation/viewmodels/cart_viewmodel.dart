@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/business_rules.dart';
 import '../../domain/tiffin_item_model.dart';
 import '../widgets/pass_card_3d.dart';
+import '../../../../core/services/firebase_service.dart';
 
 /// Enum distinguishing between a daily one-off meal purchase and a multi-day pass
 enum OrderMode {
@@ -170,11 +171,23 @@ class CartViewModel extends StateNotifier<CartState> {
     state = state.copyWith(autoRotatePassMenu: value);
   }
 
+  void _syncCartTracking() {
+    try {
+      final phone = FirebaseService.instance.currentUser?.phoneNumber ?? 'active_cart_user';
+      FirebaseService.instance.trackAbandonedCart(
+        phone: phone,
+        items: state.itemQuantities,
+        subtotal: state.itemsSubtotal,
+      );
+    } catch (_) {}
+  }
+
   /// Increase item quantity by 1
   void addItem(String itemId) {
     final updated = Map<String, int>.from(state.itemQuantities);
     updated[itemId] = (updated[itemId] ?? 0) + 1;
     state = state.copyWith(itemQuantities: updated);
+    _syncCartTracking();
   }
 
   /// Decrease item quantity by 1, removing from cart when quantity drops to 0
@@ -189,6 +202,7 @@ class CartViewModel extends StateNotifier<CartState> {
       updated[itemId] = currentQty - 1;
     }
     state = state.copyWith(itemQuantities: updated);
+    _syncCartTracking();
   }
 
   /// Explicitly set item quantity (removes item if quantity <= 0)
@@ -200,11 +214,13 @@ class CartViewModel extends StateNotifier<CartState> {
       updated[itemId] = quantity;
     }
     state = state.copyWith(itemQuantities: updated);
+    _syncCartTracking();
   }
 
   /// Clear all selected items from the cart
   void clearCart() {
     state = state.copyWith(itemQuantities: const {});
+    _syncCartTracking();
   }
 
   /// Switch between Single Day Tiffin and Subscription Pass order modes

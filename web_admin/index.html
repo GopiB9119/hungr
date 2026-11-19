@@ -99,6 +99,9 @@
     <button class="tab-btn" data-tab="dispatch-tab">
       <span>📦</span> Live Gate Drop Dispatch Feed
     </button>
+    <button class="tab-btn" data-tab="notifications-tab">
+      <span>📢</span> Push Notifications & Retention
+    </button>
   </nav>
 
   <!-- MAIN TAB CONTENT CONTAINER -->
@@ -184,6 +187,111 @@
 
       <div class="dispatch-feed" id="dispatch-container">
         <!-- Rendered by JavaScript -->
+      </div>
+    </section>
+
+    <!-- TAB 5: PUSH NOTIFICATIONS & RETENTION ENGINE -->
+    <section id="notifications-tab" class="tab-panel">
+      <div class="section-header">
+        <div>
+          <h2 class="section-title">Push Notifications & Customer Retention Command</h2>
+          <p class="section-subtitle">Dispatch real-time FCM notifications, recover abandoned carts, and drive daily active app habit loops (Swiggy / Zomato Playbook).</p>
+        </div>
+      </div>
+
+      <!-- Quick Retention Triggers -->
+      <div style="background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 18px; margin-bottom: 24px;">
+        <h4 style="margin: 0 0 12px; font-size: 14px; font-weight: 700; color: #F59E0B; text-transform: uppercase; letter-spacing: 0.5px;">⚡ Quick Retention Campaign Triggers</h4>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+          <button class="btn btn-secondary" onclick="triggerQuickCampaign('cutoff')" style="font-size: 13px;">
+            ⏰ 8:15 PM Cutoff Urgency ("45 Mins Left!")
+          </button>
+          <button class="btn btn-secondary" onclick="triggerQuickCampaign('gate_drop')" style="font-size: 13px;">
+            🍱 7:15 AM Breakfast Arrival Alert
+          </button>
+          <button class="btn btn-secondary" onclick="triggerQuickCampaign('abandoned_cart')" style="font-size: 13px;">
+            🤤 Abandoned Cart Recovery (+HUNGR20)
+          </button>
+          <button class="btn btn-secondary" onclick="triggerQuickCampaign('weekend')" style="font-size: 13px;">
+            🔥 Weekend Woodfire Special Drop
+          </button>
+        </div>
+      </div>
+
+      <!-- Custom Broadcast Composer -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+        <div style="background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px;">
+          <h3 style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #FFFFFF;">Compose Custom Live Notification</h3>
+          
+          <div class="form-group">
+            <label>Notification Headline / Title:</label>
+            <input type="text" id="notif-title" placeholder="e.g. 50% Off on Rayalaseema Dosa Drop! 🔥">
+          </div>
+
+          <div class="form-group">
+            <label>Message Body Text:</label>
+            <textarea id="notif-body" rows="3" style="width: 100%; background: #0F172A; border: 1px solid #334155; border-radius: 8px; color: #FFFFFF; padding: 10px; font-family: inherit;" placeholder="e.g. Book your breakfast slot before 9 PM cutoff. Sri Venkateshwara Tiffins is live!"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Target Audience Segment:</label>
+            <select id="notif-audience">
+              <option value="all_users">All Khammam App Users (FCM Topic: all_users)</option>
+              <option value="daily_cutoff_reminders">Users Subscribed to Cutoff Reminders</option>
+              <option value="morning_gate_drops">Active Pass Holders (Gate Drops)</option>
+              <option value="promotions">Promo & Discount Hunters</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Deep Link Action Screen:</label>
+            <select id="notif-route">
+              <option value="/storefront">Storefront Menu & Kitchens (/storefront)</option>
+              <option value="/storefront/checkout">Checkout Cart (/storefront/checkout)</option>
+              <option value="/tickets">Live Meal Tickets & Calendar (/tickets)</option>
+              <option value="/profile/referral">Refer & Earn ₹50 (/profile/referral)</option>
+            </select>
+          </div>
+
+          <button class="btn btn-primary" onclick="dispatchCustomNotification()" style="width: 100%; justify-content: center; margin-top: 10px;">
+            🚀 Dispatch Live Push Notification
+          </button>
+        </div>
+
+        <!-- Live Preview Phone Mockup -->
+        <div style="background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px;">
+          <h3 style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #FFFFFF;">Live Android Lock-screen Preview</h3>
+          <div style="background: #000000; border-radius: 20px; padding: 20px; border: 2px solid #334155; min-height: 240px; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+            <div style="color: #6B7280; font-size: 11px; margin-bottom: 12px; display: flex; justify-content: space-between;">
+              <span>HUNGR • JUST NOW</span>
+              <span>Khammam Gate Drop</span>
+            </div>
+            <div style="background: #1F2937; border-radius: 12px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; border: 1px solid #374151;">
+              <div style="width: 36px; height: 36px; border-radius: 8px; background: #E11D48; display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                🍱
+              </div>
+              <div style="flex: 1;">
+                <div id="preview-notif-title" style="font-weight: 700; color: #FFFFFF; font-size: 13.5px; margin-bottom: 2px;">
+                  Hungr Breakfast Alert 🍱
+                </div>
+                <div id="preview-notif-body" style="color: #9CA3AF; font-size: 12px; line-height: 1.4;">
+                  Slots close strictly at 9:00 PM. Book your morning tiffin pass now!
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Dispatch History -->
+      <div style="background: #1E293B; border: 1px solid #334155; border-radius: 14px; padding: 20px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: #FFFFFF;">Real-time Notification Dispatch Log</h3>
+          <button class="btn btn-secondary" onclick="loadNotificationHistory()" style="font-size: 12px; padding: 4px 10px;">↻ Refresh Log</button>
+        </div>
+        <div id="notif-history-list">
+          <!-- Rendered dynamically -->
+        </div>
       </div>
     </section>
   </main>

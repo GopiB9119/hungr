@@ -121,5 +121,32 @@ service cloud.firestore {
       allow read: if true; // Publicly readable for discounts & banners
       allow write: if isAuthenticated() && isAdmin();
     }
+
+    // Customer Orders Ledger (Zero Dummy Data)
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || resource.data.phoneNumber == request.auth.token.phone_number || isAdmin());
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    // FCM Device Tokens
+    match /fcm_tokens/{tokenId} {
+      allow read, write: if true;
+    }
+
+    // Abandoned Cart Recovery Sessions
+    match /abandoned_carts/{cartId} {
+      allow read, write: if true;
+    }
+
+    // Admin Push Notifications Dispatch Queue & History
+    match /notifications_queue/{queueId} {
+      allow read, write: if true; // Admin web command dispatches queue
+    }
+
+    match /notifications_history/{historyId} {
+      allow read: if true;
+      allow write: if true;
+    }
   }
 }

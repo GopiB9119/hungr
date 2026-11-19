@@ -293,3 +293,194 @@ exports.reassignKitchenUnitFailover = functions.https.onCall(async (data, contex
 
   return { success: true, message: `Unit ${unitId} rerouted to backup hub.` };
 });
+
+/**
+ * 5. onNotificationQueueCreate (Firestore Trigger)
+ * Dispatches live push notifications configured by Admin in Web Command.
+ * Supports: all_users topic, custom target clusters, and deep links.
+ */
+exports.onNotificationQueueCreate = functions.firestore
+  .document("notifications_queue/{notificationId}")
+  .onCreate(async (snap, context) => {
+    const data = snap.data();
+    if (!data || data.status === "SENT") return null;
+
+    const {
+      title,
+      body,
+      imageUrl,
+      route = "/storefront",
+      audience = "all_users",
+      actionType = "GENERAL",
+    } = data;
+
+    const payload = {
+      notification: {
+        title: title || "Hungr Breakfast Update 🍱",
+        body: body || "Fresh updates on tomorrow morning's tiffins!",
+      },
+      data: {
+        route: route,
+        actionType: actionType,
+        click_action: "FLUTTER_NOTIFICATION_CLICK",
+        timestamp: String(Date.now()),
+      },
+    };
+
+    if (imageUrl) {
+      payload.notification.imageUrl = imageUrl;
+    }
+
+    try {
+      let response;
+      if (audience === "all_users") {
+        response = await admin.messaging().send({
+          topic: "all_users",
+          ...payload,
+        });
+        console.log("✅ [FCM] Broadcast dispatched to topic all_users:", response);
+      } else {
+        // Broadcast to specific topic
+        response = await admin.messaging().send({
+          topic: audience,
+          ...payload,
+        });
+        console.log(`✅ [FCM] Dispatched to topic ${audience}:`, response);
+      }
+
+      // Mark queue as sent
+      await snap.ref.update({
+        status: "SENT",
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+        responseMessageId: response,
+      });
+
+      // Record in broadcast history
+      await db.collection("notifications_history").add({
+        title,
+        body,
+        route,
+        audience,
+        sentAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (err) {
+      console.error("❌ [FCM Error] Failed to dispatch push notification:", err);
+      await snap.ref.update({
+        status: "FAILED",
+        error: String(err),
+      });
+    }
+    return null;
+  });
+
+/**
+ * 6. scheduledNightlyCutoffPush (Scheduled Daily at 20:15 IST)
+ * Swiggy/Zomato style behavioral urgency:
+ * Sends FOMO push notification 45 mins before 9:00 PM cutoff.
+ */
+exports.scheduledNightlyCutoffPush = functions.pubsub
+  .schedule("45 14 * * *") // 20:15 IST (14:45 UTC)
+  .timeZone("Asia/Kolkata")
+  .onRun(async (context) => {
+    const message = {
+      topic: "daily_cutoff_reminders",
+      notification: {
+        title: "45 Mins Left! ⏰ Lock Tomorrow's Breakfast",
+        body: "Slots close strictly at 9:00 PM. Book your morning tiffin pass before kitchens stop accepting orders!",
+      },
+      data: {
+        route: "/storefront",
+        actionType: "CUTOFF_URGENCY",
+      },
+    };
+
+    try {
+      await admin.messaging().send(message);
+      console.log("⏰ [FCM] 8:15 PM Nightly Cutoff Urgency Push dispatched.");
+    } catch (err) {
+      console.error("Error sending cutoff push:", err);
+    }
+    return null;
+  });
+
+/**
+ * 7. scheduledMorningGateDropAlert (Scheduled Daily at 07:15 AM IST)
+ * Morning delight notification when drivers start gate drop runs.
+ */
+exports.scheduledMorningGateDropAlert = functions.pubsub
+  .schedule("45 1 * * *") // 07:15 AM IST (01:45 UTC)
+  .timeZone("Asia/Kolkata")
+  .onRun(async (context) => {
+    const message = {
+      topic: "morning_gate_drops",
+      notification: {
+        title: "Breakfast is at your Gate! 🍱",
+        body: "Your fresh, hot morning tiffin has arrived at the hostel watchman desk. Collect it fresh before 8:30 AM!",
+      },
+      data: {
+        route: "/tickets",
+        actionType: "GATE_DROP_ALERT",
+      },
+    };
+
+    try {
+      await admin.messaging().send(message);
+      console.log("🍱 [FCM] 7:15 AM Morning Gate Drop Push dispatched.");
+    } catch (err) {
+      console.error("Error sending gate drop alert:", err);
+    }
+    return null;
+  });
+
+/**
+ * 8. abandonedCartEngagementNudge (Scheduled Every 30 Mins)
+ * Recovers users who added breakfast to cart but didn't finish booking.
+ */
+exports.abandonedCartEngagementNudge = functions.pubsub
+  .schedule("every 30 minutes")
+  .onRun(async (context) => {
+    const twentyMinsAgo = new Date(Date.now() - 20 * 60 * 1000);
+
+    const snapshot = await db
+      .collection("abandoned_carts")
+      .where("status", "==", "in_cart")
+      .where("reminded", "==", false)
+      .where("updatedAt", "<=", twentyMinsAgo)
+      .limit(50)
+      .get();
+
+    if (snapshot.empty) return null;
+
+    console.log(`🛒 Found ${snapshot.size} abandoned carts to nudge.`);
+
+    const batch = db.batch();
+
+    for (const doc of snapshot.docs) {
+      const data = doc.data();
+      const userDoc = data.userId ? await db.collection("users").doc(data.userId).get() : null;
+      const fcmToken = userDoc && userDoc.exists ? userDoc.data().fcmToken : null;
+
+      if (fcmToken) {
+        try {
+          await admin.messaging().send({
+            token: fcmToken,
+            notification: {
+              title: "Hot Breakfast Waiting in Your Cart! 🤤",
+              body: "Don't miss out on tomorrow's fresh tiffins. Tap to complete your order with flat ₹20 off using HUNGR20!",
+            },
+            data: {
+              route: "/storefront/checkout",
+              actionType: "ABANDONED_CART_RECOVERY",
+            },
+          });
+        } catch (e) {
+          console.warn("Failed sending push to token:", e);
+        }
+      }
+
+      batch.update(doc.ref, { reminded: true, remindedAt: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    await batch.commit();
+    return null;
+  });
