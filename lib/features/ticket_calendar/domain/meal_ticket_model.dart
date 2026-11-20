@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart' show Timestamp;
+
 enum TicketStatusType {
   scheduled,
   locked,
   skipped,
   delivered,
+  missed,
 }
 
 enum MealSlotType {
@@ -23,7 +26,10 @@ class MealTicket {
   final String? assignedVendorId; // 'aunty_1' or 'aunty_2'
   final String? assignedDriverId;
   final TicketStatusType status;
-  final String? dropProofImageUrl;
+  final String? replacementTicketId;
+  final DateTime? missedAt;
+  final String? missedPlacement;
+  final String? dropProofPath;
   final DateTime? deliveredAt;
   final String bagToken; // e.g. '#SS-04'
   final String? specialtyName; // e.g. 'Rayalaseema Set Dosa'
@@ -42,12 +48,19 @@ class MealTicket {
     this.assignedVendorId,
     this.assignedDriverId,
     this.status = TicketStatusType.scheduled,
-    this.dropProofImageUrl,
+    this.replacementTicketId,
+    this.missedAt,
+    this.missedPlacement,
+    this.dropProofPath,
     this.deliveredAt,
     this.bagToken = '#TS-04',
     this.specialtyName,
     this.companionMeals = 0,
   });
+
+  String get missedMessage => replacementTicketId?.isNotEmpty == true
+      ? 'Missed - replacement meal added'
+      : 'Missed';
 
   MealTicket copyWith({
     TicketStatusType? status,
@@ -55,7 +68,10 @@ class MealTicket {
     List<String>? addOns,
     String? assignedVendorId,
     String? assignedDriverId,
-    String? dropProofImageUrl,
+    String? replacementTicketId,
+    DateTime? missedAt,
+    String? missedPlacement,
+    String? dropProofPath,
     DateTime? deliveredAt,
     String? bagToken,
     String? specialtyName,
@@ -74,7 +90,10 @@ class MealTicket {
       assignedVendorId: assignedVendorId ?? this.assignedVendorId,
       assignedDriverId: assignedDriverId ?? this.assignedDriverId,
       status: status ?? this.status,
-      dropProofImageUrl: dropProofImageUrl ?? this.dropProofImageUrl,
+      replacementTicketId: replacementTicketId ?? this.replacementTicketId,
+      missedAt: missedAt ?? this.missedAt,
+      missedPlacement: missedPlacement ?? this.missedPlacement,
+      dropProofPath: dropProofPath ?? this.dropProofPath,
       deliveredAt: deliveredAt ?? this.deliveredAt,
       bagToken: bagToken ?? this.bagToken,
       specialtyName: specialtyName ?? this.specialtyName,
@@ -96,7 +115,13 @@ class MealTicket {
       'assignedVendorId': assignedVendorId,
       'assignedDriverId': assignedDriverId,
       'status': status.name.toUpperCase(),
-      'dropProofImageUrl': dropProofImageUrl,
+      if (replacementTicketId != null) 'replacementTicketId': replacementTicketId,
+      if (missedAt != null) 'missedAt': missedAt!.toIso8601String(),
+      if (missedPlacement != null) 'missedPlacement': missedPlacement,
+      'bagToken': bagToken,
+      'specialtyName': specialtyName,
+      'companionMeals': companionMeals,
+      'dropProofPath': dropProofPath,
       'deliveredAt': deliveredAt?.toIso8601String(),
     };
   }
@@ -108,17 +133,27 @@ class MealTicket {
       userId: map['userId'] as String,
       clusterId: map['clusterId'] as String,
       clusterName: (map['clusterName'] as String?) ?? 'Cluster Drop Point',
-      deliveryDate: DateTime.parse(map['deliveryDate'] as String),
+      deliveryDate: _date(map['deliveryDate']),
       comboSelection: map['comboSelection'] as String,
       addOns: List<String>.from((map['addOns'] as List<dynamic>?) ?? []),
       slot: (map['slot'] as String?) == 'EVENING' ? MealSlotType.evening : MealSlotType.morning,
       assignedVendorId: map['assignedVendorId'] as String?,
       assignedDriverId: map['assignedDriverId'] as String?,
       status: _parseStatus(map['status'] as String?),
-      dropProofImageUrl: map['dropProofImageUrl'] as String?,
-      deliveredAt: map['deliveredAt'] != null ? DateTime.parse(map['deliveredAt'] as String) : null,
+      replacementTicketId: map['replacementTicketId'] as String?,
+      missedAt: map['missedAt'] == null ? null : _date(map['missedAt']),
+      missedPlacement: map['missedPlacement'] as String?,
+      bagToken: map['bagToken'] as String? ?? '#TS-04',
+      specialtyName: map['specialtyName'] as String?,
+      companionMeals: map['companionMeals'] as int? ?? 0,
+      dropProofPath: map['dropProofPath'] as String?,
+      deliveredAt: map['deliveredAt'] != null ? _date(map['deliveredAt']) : null,
     );
   }
+
+  static DateTime _date(Object? value) => value is Timestamp
+      ? value.toDate().toUtc()
+      : DateTime.parse(value as String);
 
   static TicketStatusType _parseStatus(String? statusStr) {
     switch (statusStr?.toUpperCase()) {
@@ -126,6 +161,8 @@ class MealTicket {
         return TicketStatusType.locked;
       case 'SKIPPED':
         return TicketStatusType.skipped;
+      case 'MISSED':
+        return TicketStatusType.missed;
       case 'DELIVERED':
         return TicketStatusType.delivered;
       default:

@@ -488,11 +488,65 @@ const editSaveButton = document.getElementById('edit-shop-save');
 const editSaveLabel = editSaveButton.textContent;
 let editSession = null;
 
+const newShopDishes = [
+  { id: 'item_set_dosa', name: 'Rayalaseema Set Dosa (3 Pcs)' },
+  { id: 'item_idli_vada', name: 'Steaming Ghee Idli + Vada' },
+];
+
+function renderHotelPrices(containerId, prefix, dishes) {
+  const pricing = window.HungrPricing;
+  const container = document.getElementById(containerId);
+  container.replaceChildren();
+  dishes.forEach((dish, idx) => {
+    const row = addElement(container, 'div', 'dish-edit-row');
+    const label = addElement(row, 'label', '', dish.name);
+    const field = addElement(row, 'div', 'dish-price-field');
+    const input = addElement(field, 'input');
+    input.id = `${prefix}-${idx}`;
+    label.htmlFor = input.id;
+    input.type = 'number';
+    input.step = '1';
+    input.min = pricing.minHotelPrice;
+    input.max = pricing.maxHotelPrice;
+    input.required = true;
+    input.value = pricing.hotelPriceForCustomerPrice(dish.price);
+    const hint = addElement(field, 'small');
+    hint.id = `${input.id}-hint`;
+    input.setAttribute('aria-describedby', hint.id);
+    function updateHint() {
+      try {
+        const price = pricing.customerPriceForHotelPrice(input.value);
+        hint.textContent = `Customer pays Rs ${price} • ${pricing.isPassEligible(price) ? 'Pass OK' : 'Not on pass'}`;
+      } catch (error) {
+        hint.textContent = error.message;
+      }
+    }
+    input.addEventListener('input', updateHint);
+    updateHint();
+  });
+}
+
+function readHotelPrices(prefix, dishes) {
+  const priced = [];
+  for (const [idx, dish] of dishes.entries()) {
+    const input = document.getElementById(`${prefix}-${idx}`);
+    try {
+      const price = window.HungrPricing.customerPriceForHotelPrice(input?.value);
+      priced.push({ ...dish, price });
+    } catch (error) {
+      alert(`${dish.name}: ${error.message}`);
+      input?.focus();
+      return null;
+    }
+  }
+  return priced;
+}
+
 function openEditShopModal(shopId) {
   const shop = shops?.find(s => s.id === shopId);
   if (!shop) return;
 
-  editSession = { id: shopId };
+  editSession = { id: shopId, dishes: shop.dishes };
   editSaveButton.disabled = false;
   editSaveButton.textContent = editSaveLabel;
   document.getElementById('edit-shop-id').value = shop.id;
@@ -501,20 +555,7 @@ function openEditShopModal(shopId) {
   document.getElementById('edit-shop-reason').value = shop.closureReason || '';
   document.getElementById('edit-shop-reopen').value = shop.reopenDate || '';
 
-  const dishesContainer = document.getElementById('edit-shop-dishes');
-  dishesContainer.replaceChildren();
-  shop.dishes.forEach((dish, idx) => {
-    const row = addElement(dishesContainer, 'div', 'dish-edit-row');
-    addElement(row, 'span', '', dish.name);
-    const field = addElement(row, 'div');
-    addElement(field, 'span', '', '₹ ');
-    const input = addElement(field, 'input');
-    input.type = 'number';
-    input.min = '10';
-    input.max = '300';
-    input.id = `dish-price-${idx}`;
-    input.value = dish.price;
-  });
+  renderHotelPrices('edit-shop-dishes', 'dish-price', shop.dishes);
 
   toggleClosureFields();
   document.getElementById('edit-shop-modal').classList.add('open');
@@ -546,14 +587,13 @@ async function saveShopChanges() {
   const shop = shops?.find(s => s.id === id);
   if (!shop) return;
 
+  const dishes = readHotelPrices('dish-price', session.dishes);
+  if (!dishes) return;
   const edits = {
     status: document.getElementById('edit-shop-status').value,
     closureReason: document.getElementById('edit-shop-reason').value.trim(),
     reopenDate: document.getElementById('edit-shop-reopen').value.trim(),
-    dishes: shop.dishes.map((dish, idx) => {
-      const input = document.getElementById(`dish-price-${idx}`);
-      return { ...dish, price: (input && parseInt(input.value)) || dish.price };
-    }),
+    dishes,
   };
   const edited = { ...shop, ...edits };
   const isCurrent = () => editSession === session;
@@ -566,6 +606,7 @@ async function saveShopChanges() {
 }
 
 function openAddShopModal() {
+  renderHotelPrices('add-shop-dishes', 'new-dish-price', newShopDishes);
   document.getElementById('add-shop-modal').classList.add('open');
 }
 
@@ -584,6 +625,8 @@ async function saveNewShop(button) {
     return;
   }
 
+  const dishes = readHotelPrices('new-dish-price', newShopDishes);
+  if (!dishes) return;
   const newShop = {
     id: `shop_${Date.now()}`,
     name,
@@ -596,10 +639,7 @@ async function saveNewShop(button) {
     deliveryWindow: 'Drop at gate by 7:30 AM',
     closureReason: '',
     reopenDate: '',
-    dishes: [
-      { id: 'item_set_dosa', name: 'Rayalaseema Set Dosa (3 Pcs)', price: 49 },
-      { id: 'item_idli_vada', name: 'Steaming Ghee Idli + Vada', price: 49 }
-    ]
+    dishes,
   };
 
   const saved = await saveCatalogChange(button,

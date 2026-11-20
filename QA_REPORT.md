@@ -162,3 +162,88 @@ and does not call this function yet.
   payment.
 - Leaving food at the door without proof makes "delivered" claims impossible
   to check. A quick door photo protects the customer and the rider.
+
+## 20 November: founder answers, round 2 (Vamsi)
+
+Recorded in [the decision list](qa/checkout-decisions.json). Checkout is
+still disabled: there is no Razorpay account or real hotel price list yet.
+
+| Topic | Decision | Built and tested |
+|---|---|---|
+| Payment | Razorpay only | [Settlement](functions/checkout-settlement.js) rejects any other provider. |
+| Price | Hotel price + ₹5 per item, inside the shown price. Pass meals ≤ ₹50. | Admins type the hotel price; the [admin portal](web_admin/pricing.js) saves hotel + ₹5 and refuses blank, decimal or out-of-range (5–295) prices. The app's pass menu lists only items of ₹50 or less, and each kitchen's own price is kept in the cart. |
+| Skips | 3 per pass | The server refused a 4th skip already. The app's pause buttons now stop at 3 too and say why. |
+| Missed meal | Next day or end of pass; no refund for it | New admin-only [`replaceMissedMeal`](functions/meal-scheduling.js) marks the meal MISSED and adds one replacement, extending the pass if needed. It does not use up a skip. The app shows MISSED meals as read-only. |
+| Double or late payment | Keep as credit for another pass, or refund on request | A verified payment that arrives twice or after the hold ended becomes a `customer_credits` record instead of being lost. Customers can read only their own credits; no app can write them. |
+| Kitchens | About 50 breakfasts each | The existing daily kitchen split already stops at 50. A missed-meal replacement now checks that the day still has room: NEXT_DAY is refused when the day is full, and END_OF_PASS moves to the next day with room (up to 14 days). |
+| Proof | Rider photo at the door, stored | No app can mark a meal "delivered" any more ([Firestore rules](firestore.rules)). The assigned rider uploads one photo to `delivery_proofs/{ticket}/proof` while the meal is out ([Storage rules](storage.rules): jpeg/png/webp, under 5 MB, never replaced or deleted). Then the server [`finalizeDeliveryProof`](functions/delivery-proof.js) checks the file, marks the meal DELIVERED with the server time and the photo's path, and removes the public link token from the photo. |
+| Crossed-out prices | Keep them | Not changed, by founder decision. See risks. |
+
+**Tests (all local, demo project only):**
+
+| Suite | Result |
+|---|---|
+| Functions (`cd functions; npm test`) | 54 / 54 |
+| Flutter (`flutter test`) | 41 / 41; `flutter analyze`: 1 old info note only |
+| Admin portal (`node --test web_admin/pricing.test.js qa/admin/catalog.test.cjs`) | 19 / 19 |
+| Security rules ([`qa/rules-test/run.ps1`](qa/rules-test/run.ps1), emulators) | 5 / 5 |
+
+[`checkout-handoff.ps1 -Verify`](qa/checkout-handoff.ps1) now runs all of
+these except Flutter.
+
+**Independent review of the round-2 work.** A separate reviewer checked
+the changes above. Every finding was fixed with a test that failed first.
+
+| # | Sev | Problem found | Fix |
+|---|---|---|---|
+| 1 | P0 | A rider could mark a meal "delivered" with only a photo-shaped link, without uploading anything, and with any text as the time. | Apps can no longer write DELIVERED. The server marks it only after the real photo is stored ([delivery-proof.js](functions/delivery-proof.js)). |
+| 2 | P0 | The saved photo link carried a download token, so anyone with the link could open a photo of a customer's door. | The ticket now stores only the Storage path, and the server removes the token from the photo. |
+| 3 | P1 | A missed-meal replacement ignored the 50-per-kitchen limit. One extra meal could make the whole 9 PM kitchen split for that day fail. | Replacement checks the day has room first (see Kitchens row). |
+| 4 | P1 | The pass screen listed a fixed demo menu, not the live kitchens' ₹50-or-less dishes. | It lists only breakfasts that every selling kitchen offers at ₹50 or less. |
+| 5 | P1 | One bad dish entry in the live catalog crashed the whole kitchen list. | Bad entries are skipped; the rest of the menu still loads. |
+| 6 | P1 | Calendar pause ignored the 9 PM cutoff and allowed pausing today or past days. | Pause needs a future service day and a time before 9 PM IST, like the server. |
+| 7 | P2 | Storage accepted many proof files per ticket. | One fixed file per ticket: `delivery_proofs/{ticket}/proof`. |
+| 8 | P2 | The 3-skip count mixed skips from other passes. | Counts only skips for the same pass and customer. |
+
+My own check of the app fixes found three more, also fixed with tests:
+
+| # | Sev | Problem found | Fix |
+|---|---|---|---|
+| 9 | P1 | An empty live catalog (now shown honestly instead of demo kitchens) crashed the kitchen page. | The page shows "This kitchen is not available right now." |
+| 10 | P1 | An unknown kitchen link silently opened a *different* kitchen, so a customer could add food from the wrong shop. | Same notice; never another kitchen. |
+| 11 | P2 | "Resume" on a paused meal had no 9 PM cutoff, so tomorrow's meal could come back after the kitchen order was locked. | Resume follows the same cutoff and tells the customer why. |
+
+**Still needed before launch:**
+
+- Razorpay account and test keys (server settings only, never in the app).
+- Real hotel list and prices, and who enters them. The demo prices already
+  include the ₹5. Pass prices (3, 7, 15 days) are not decided.
+- A refund-request owner. Credits are stored, but refunds are done by hand.
+- Connect the app to the server. Skip, pause, missed meal and checkout in
+  the customer app are still local demos.
+- Rider app: take and upload the door photo to `delivery_proofs/{ticket}/proof`.
+  The rules and the server step are ready; the screen is not built.
+
+**Risks:**
+
+- **Crossed-out prices.** Vamsi chose to keep the "original price" and
+  "SAVE ₹" labels. If no customer ever paid that crossed-out price, the
+  label can count as a misleading price under consumer-protection law, and
+  it targets exactly the budget customers Hungr wants to protect. Please
+  get legal advice before launch.
+- **Who sees the door photo.** "Everyone can see it" was read as: the
+  customer, the assigned rider and Hungr admins. It is not public, because
+  it shows a home. Vamsi should confirm.
+- The earlier risks about double charges and missing delivery proof are
+  now handled in the server and rules, as listed above.
+- **Photo sharing.** The customer, rider or an admin who can open the photo
+  could still save or share it, like a screenshot. Rules cannot stop that.
+- **Busy-day race.** Two missed-meal replacements made at the same moment
+  for the same nearly full day could both pass the room check. The 9 PM
+  split then stops loudly instead of overfilling. Meals pushed by a
+  customer's skip are not room-checked yet (this was already true before).
+
+**Local setup notes:** the lock file asks for Flutter 3.44 or newer; this
+PC has 3.41.5, which rewrites `pubspec.lock` when tests run (that change is
+not committed). If a widget test fails with "Unsupported runtime stages
+format version", delete `build\unit_test_assets` and run again.

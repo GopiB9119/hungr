@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/business_rules.dart';
 import '../../../../core/services/local_storage_service.dart';
 import '../../../../core/utils/date_time_utils.dart';
 import '../../../onboarding/domain/cluster_model.dart';
@@ -55,10 +56,12 @@ class CustomerDashboardState {
 
 class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
   final LocalStorageService _storage;
+  final DateTime Function() _clock;
   bool _clusterConfirmed = false;
 
-  CustomerDashboardViewModel({LocalStorageService? storage})
-      : _storage = storage ?? LocalStorageService.instance,
+  CustomerDashboardViewModel({LocalStorageService? storage, DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now,
+        _storage = storage ?? LocalStorageService.instance,
         super(
           const CustomerDashboardState(
             hasActivePass: false,
@@ -93,6 +96,15 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
     }
   }
 
+  // The dashboard action targets the first ticket; the calendar targets its own row.
+  int get skipsLeft => state.tickets.isEmpty ? BusinessRules.maxSkipsPerPass : skipsLeftFor(state.tickets.first);
+
+  int skipsLeftFor(MealTicket target) {
+    final used = state.tickets.where((t) => t.status == TicketStatusType.skipped &&
+        t.passId == target.passId && t.userId == target.userId).length;
+    return used >= BusinessRules.maxSkipsPerPass ? 0 : BusinessRules.maxSkipsPerPass - used;
+  }
+
   bool togglePauseTicket(String ticketId) {
     final index = state.tickets.indexWhere((t) => t.ticketId == ticketId);
     if (index == -1) return false;
@@ -101,12 +113,16 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
     final target = updatedTickets[index];
 
     if (target.status == TicketStatusType.scheduled) {
+      if (!DateTimeUtils.canSkipMeal(target.deliveryDate, instant: _clock()) ||
+          skipsLeftFor(target) == 0) {
+        return false;
+      }
       updatedTickets[index] = target.copyWith(status: TicketStatusType.skipped);
       final lastDate = updatedTickets.last.deliveryDate;
       final appendedDate = lastDate.add(const Duration(days: 1));
 
       final replacementTicket = MealTicket(
-        ticketId: 't_rep_${DateTime.now().millisecondsSinceEpoch}',
+        ticketId: 't_pause_${target.ticketId}',
         passId: target.passId,
         userId: target.userId,
         clusterId: target.clusterId,
@@ -119,10 +135,16 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
       );
       updatedTickets.add(replacementTicket);
     } else if (target.status == TicketStatusType.skipped) {
+      // Resuming re-adds the meal to that day's kitchen order, so it closes at the same cutoff.
+      if (!DateTimeUtils.canSkipMeal(target.deliveryDate, instant: _clock())) return false;
+      // Only remove the ticket created by this local pause, never a server replacement.
+      final replacementIndex = updatedTickets.indexWhere((t) =>
+          t.ticketId == 't_pause_${target.ticketId}' && t.status == TicketStatusType.scheduled);
+      if (replacementIndex < 0) return false;
       updatedTickets[index] = target.copyWith(status: TicketStatusType.scheduled);
-      if (updatedTickets.length > state.totalMeals) {
-        updatedTickets.removeLast();
-      }
+      updatedTickets.removeAt(replacementIndex);
+    } else {
+      return false;
     }
 
     state = state.copyWith(tickets: updatedTickets);
@@ -131,7 +153,7 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
 
   void switchTicketCombo(String ticketId, String newCombo) {
     final index = state.tickets.indexWhere((t) => t.ticketId == ticketId);
-    if (index == -1) return;
+    if (index == -1 || state.tickets[index].status != TicketStatusType.scheduled) return;
 
     final updatedTickets = List<MealTicket>.from(state.tickets);
     updatedTickets[index] = updatedTickets[index].copyWith(comboSelection: newCombo);
@@ -144,6 +166,7 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
   }
 
   void switchTomorrowCombo(String newCombo) {
+    if (state.tickets.isNotEmpty && state.tickets.first.status != TicketStatusType.scheduled) return;
     if (!DateTimeUtils.canModifyTomorrowMeal()) {
       throw Exception('403_CUTOFF_PASSED: Cannot switch meal after 9:00 PM IST.');
     }
@@ -160,39 +183,8 @@ class CustomerDashboardViewModel extends StateNotifier<CustomerDashboardState> {
   }
 
   bool skipTomorrow() {
-    if (!DateTimeUtils.canModifyTomorrowMeal()) {
-      return false; // Cutoff passed
-    }
-
-    if (state.tickets.isEmpty) return false;
-
-    final updatedTickets = List<MealTicket>.from(state.tickets);
-    final skipped = updatedTickets[0].copyWith(status: TicketStatusType.skipped);
-    updatedTickets[0] = skipped;
-
-    // Append new ticket at the tail
-    final lastDate = updatedTickets.last.deliveryDate;
-    final appendedDate = lastDate.add(const Duration(days: 1));
-
-    final newTicket = MealTicket(
-      ticketId: 't_${DateTime.now().millisecondsSinceEpoch}',
-      passId: skipped.passId,
-      userId: skipped.userId,
-      clusterId: skipped.clusterId,
-      clusterName: skipped.clusterName,
-      deliveryDate: appendedDate,
-      comboSelection: skipped.comboSelection,
-      addOns: skipped.addOns,
-      slot: skipped.slot,
-      status: TicketStatusType.scheduled,
-    );
-
-    updatedTickets.add(newTicket);
-
-    state = state.copyWith(
-      tickets: updatedTickets,
-    );
-    return true;
+    if (state.tickets.isEmpty || state.tickets.first.status != TicketStatusType.scheduled) return false;
+    return togglePauseTicket(state.tickets.first.ticketId);
   }
 
   void updateCluster(DeliveryCluster newCluster) {

@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/constants/business_rules.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/widgets/obsidian_card.dart';
+import '../../../ticket_calendar/domain/meal_ticket_model.dart';
 import '../viewmodels/customer_dashboard_viewmodel.dart';
 
 class ActivePassDashboardCard extends ConsumerWidget {
@@ -159,7 +161,9 @@ class ActivePassDashboardCard extends ConsumerWidget {
               ),
               onPressed: () {
                 Navigator.of(context).pop();
-                final success = ref.read(customerDashboardProvider.notifier).skipTomorrow();
+                final dashboard = ref.read(customerDashboardProvider.notifier);
+                final noSkipsLeft = dashboard.skipsLeft == 0;
+                final success = dashboard.skipTomorrow();
                 HapticFeedback.heavyImpact();
 
                 ScaffoldMessenger.of(context).clearSnackBars();
@@ -194,7 +198,12 @@ class ActivePassDashboardCard extends ConsumerWidget {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       margin: const EdgeInsets.fromLTRB(16, 0, 16, 80),
                       backgroundColor: AppColors.urgentCrimson,
-                      content: Text('Cannot skip: 9:00 PM cutoff has passed.', style: AppTypography.labelLarge.copyWith(color: Colors.white)),
+                      content: Text(
+                        noSkipsLeft
+                            ? 'Cannot skip: all ${BusinessRules.maxSkipsPerPass} skips for this pass are used.'
+                            : 'Cannot skip: skips require a future meal and close at 9:00 PM IST.',
+                        style: AppTypography.labelLarge.copyWith(color: Colors.white),
+                      ),
                     ),
                   );
                 }
@@ -211,6 +220,13 @@ class ActivePassDashboardCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(customerDashboardProvider);
     if (!state.hasActivePass || state.tickets.isEmpty) return const SizedBox.shrink();
+    final ticket = state.tickets.first;
+    if (ticket.status == TicketStatusType.missed) {
+      return ObsidianCard(
+        onTap: () => context.push(RouteNames.ticketCalendar),
+        child: Text(ticket.missedMessage, style: AppTypography.titleMedium),
+      );
+    }
     final isComboA = state.tomorrowCombo == 'A';
 
     final comboTitle = isComboA ? '2 Hot Set Dosas (Option A)' : '4 Idlis + 1 Medu Vada (Option B)';

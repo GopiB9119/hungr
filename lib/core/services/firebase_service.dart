@@ -224,12 +224,9 @@ class FirebaseService {
     try {
       return firestore
           .collection('tiffin_shops')
-          .snapshots()
+          .snapshots(includeMetadataChanges: true)
+          .where((snapshot) => snapshot.docs.isNotEmpty || !snapshot.metadata.isFromCache)
           .map((snapshot) {
-        if (snapshot.docs.isEmpty) {
-          debugPrint('ℹ️ [Firestore] No remote shops found, serving standard catalog');
-          return TiffinShop.standardShops;
-        }
         return snapshot.docs.map((doc) {
           return TiffinShop.fromMap(doc.data(), docId: doc.id);
         }).toList();

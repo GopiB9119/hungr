@@ -1,0 +1,35 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(role) {
+      return signedIn() && request.auth.token.get('role', '') == role;
+    }
+
+    function ticket(ticketId) {
+      return firestore.get(/databases/(default)/documents/meal_tickets/$(ticketId)).data;
+    }
+
+    // Rider's door-drop photo (founder rule, 20 Nov 2026). It shows a home,
+    // so only that customer, that rider and Hungr admins can open it.
+    // One fixed name per ticket: the finalizeDeliveryProof function marks the
+    // meal DELIVERED only after this exact object is stored.
+    match /delivery_proofs/{ticketId}/proof {
+      allow read: if hasRole('admin') || (signedIn() &&
+        (ticket(ticketId).userId == request.auth.uid ||
+         ticket(ticketId).get('assignedDriverId', null) == request.auth.uid));
+
+      // Upload once, while the meal is out. No overwrite or delete, so a
+      // proof photo cannot be swapped later.
+      allow create: if hasRole('driver') && resource == null &&
+        ticketId.matches('[A-Za-z0-9_-]{1,160}') &&
+        ticket(ticketId).get('assignedDriverId', null) == request.auth.uid &&
+        ticket(ticketId).status == 'LOCKED' &&
+        request.resource.contentType.matches('image/(jpeg|png|webp)') &&
+        request.resource.size > 0 && request.resource.size < 5 * 1024 * 1024;
+    }
+  }
+}

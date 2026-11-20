@@ -217,7 +217,7 @@
           <input type="text" id="edit-shop-reopen" placeholder="e.g. Tomorrow at 6:00 AM or Thursday, 14 Nov">
         </div>
 
-        <h4 style="margin: 16px 0 8px; font-size: 14px; font-weight: 700;">Dishes & Pricing:</h4>
+        <h4 style="margin: 16px 0 8px; font-size: 14px; font-weight: 700;">Hotel prices per dish (Rs):</h4>
         <div id="edit-shop-dishes" class="dishes-edit-list">
           <!-- Rendered dynamically -->
         </div>
@@ -258,6 +258,8 @@
           <label>Full Address / Landmark:</label>
           <input type="text" id="add-shop-address" placeholder="e.g. Opposite RTC Bus Stand, Khammam">
         </div>
+        <h4>Hotel prices per dish (Rs):</h4>
+        <div id="add-shop-dishes" class="dishes-edit-list"></div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" onclick="closeAddShopModal()">Cancel</button>
@@ -326,6 +328,7 @@
     <p>Hungr Operations Command • Khammam City Operations • Sub-2-Minute Gate Drop Engine</p>
   </footer>
 
+  <script src="pricing.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

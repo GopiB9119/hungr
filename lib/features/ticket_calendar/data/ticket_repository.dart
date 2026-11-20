@@ -17,6 +17,9 @@ class TicketRepository {
     required DateTime passHardExpiryDate,
     required DateTime currentQueueLastDate,
   }) async {
+    if (ticketToSkip.status != TicketStatusType.scheduled) {
+      throw StateError('Only a scheduled meal can be skipped.');
+    }
     // 1. Verify 9:00 PM Cutoff rule
     if (!DateTimeUtils.canModifyTomorrowMeal()) {
       throw Exception(
@@ -46,6 +49,9 @@ class TicketRepository {
     required MealTicket ticket,
     required String newCombo, // 'A' or 'B'
   }) async {
+    if (ticket.status != TicketStatusType.scheduled) {
+      throw StateError('Only a scheduled meal can be switched.');
+    }
     if (!DateTimeUtils.canModifyTomorrowMeal()) {
       throw Exception('403_CUTOFF_PASSED: Cannot switch combo after 21:00:00 IST.');
     }

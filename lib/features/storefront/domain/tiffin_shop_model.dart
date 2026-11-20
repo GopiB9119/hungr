@@ -129,6 +129,17 @@ class TiffinShop {
     };
   }
 
+  static TiffinItem? _tryItem(Object? entry) {
+    if (entry is! Map) return null;
+    try {
+      return TiffinItem.fromMap(Map<String, dynamic>.from(entry));
+    } on TypeError {
+      return null; // Malformed Firestore fields must not discard the other dishes.
+    } on UnsupportedError {
+      return null; // Non-finite numeric field converted to an integer.
+    }
+  }
+
   factory TiffinShop.fromMap(Map<String, dynamic> map, {String? docId}) {
     ShopStatus parseStatus(String? val) {
       switch (val) {
@@ -143,15 +154,30 @@ class TiffinShop {
       }
     }
 
-    List<TiffinItem> items = [];
-    if (map['menuItems'] is List) {
-      items = (map['menuItems'] as List)
-          .map((e) => TiffinItem.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList();
-    } else if (map['dishes'] is List) {
-      items = (map['dishes'] as List)
-          .map((e) => TiffinItem.fromMap(Map<String, dynamic>.from(e as Map)))
-          .toList();
+    final savedItems = <TiffinItem>[];
+    if (map['menuItems'] case final List<dynamic> menu) {
+      for (final entry in menu) {
+        final item = _tryItem(entry);
+        if (item != null) savedItems.add(item);
+      }
+    }
+
+    final List<TiffinItem> items;
+    if (map['dishes'] case final List<dynamic> dishes) {
+      final templates = {for (final item in savedItems) item.id: item};
+      items = [];
+      for (final dish in dishes) {
+        if (dish is! Map || dish['id'] is! String) continue;
+        final id = dish['id'] as String;
+        final price = dish['price'];
+        if (id.trim().isEmpty || price is! num || !price.isFinite || price < 0) continue;
+        final template = templates[id] ?? TiffinItem.findById(id);
+        if (template == null) continue;
+        final item = _tryItem({...template.toMap(), ...dish});
+        if (item != null) items.add(item);
+      }
+    } else {
+      items = savedItems.isNotEmpty ? savedItems : TiffinItem.standardMenuItems.take(4).toList();
     }
 
     return TiffinShop(
@@ -171,7 +197,7 @@ class TiffinShop {
       status: parseStatus(map['status'] as String?),
       closureReason: map['closureReason'] as String?,
       reopenDate: map['reopenDate'] as String?,
-      menuItems: items.isNotEmpty ? items : TiffinItem.standardMenuItems.take(4).toList(),
+      menuItems: items,
       isPromoted: map['isPromoted'] as bool? ?? false,
       discountLabel: map['discountLabel'] as String?,
     );
@@ -285,4 +311,16 @@ class TiffinShop {
       ],
     ),
   ];
+}
+
+List<TiffinItem> passRotationItems(List<TiffinShop> shops) {
+  final breakfast = <String, TiffinItem>{};
+  final excluded = <String>{};
+  for (final dish in shops.expand((shop) => shop.menuItems)) {
+    if (!dish.isPassEligible) excluded.add(dish.id);
+    if (dish.category == TiffinItem.categoryDailyBreakfast) {
+      breakfast.putIfAbsent(dish.id, () => dish);
+    }
+  }
+  return breakfast.values.where((dish) => !excluded.contains(dish.id)).toList();
 }

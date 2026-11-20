@@ -4,7 +4,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const source = fs.readFileSync(path.join(__dirname, '..', '..', 'web_admin', 'app.js'), 'utf8');
+const adminFile = name => fs.readFileSync(path.join(__dirname, '..', '..', 'web_admin', name), 'utf8');
+// index.html loads pricing.js before app.js.
+const sources = [adminFile('pricing.js'), adminFile('app.js')];
 
 function element(tag = 'div') {
   const classes = new Set(), listeners = new Map();
@@ -18,6 +20,8 @@ function element(tag = 'div') {
     appendChild(child) { this.children.push(child); },
     replaceChildren(...children) { this.textContent = ''; this.children = children; },
     addEventListener(type, fn) { listeners.set(type, fn); },
+    setAttribute(name, value) { this[name] = String(value); },
+    focus() {},
     click() {
       assert.equal(this.tag, 'button');
       if (!this.disabled) return listeners.get('click')?.({ currentTarget: this, target: this });
@@ -82,7 +86,7 @@ function portal(mode, write = async () => {}) {
     isFirebaseConfigured: mode !== 'preview', isFirebaseAvailable: mode === 'cloud',
     db: mode === 'cloud' ? db : null,
   });
-  vm.runInContext(source, ctx);
+  for (const source of sources) vm.runInContext(source, ctx);
   start();
   function snapshot(name, rows, flags = {}) {
     streams.get(name).next({
@@ -213,14 +217,31 @@ test('shop selection preserves literal labels and saves edits against the select
   find(card, n => n.tag === 'button').click();
   assert.equal(p.el('edit-shop-id').value, id);
   assert.ok(p.el('edit-shop-dishes').textContent.includes(shop.dishes[0].name));
+  // Admins type the hotel's own price; customers pay that plus Rs 5.
   const price = find(p.el('edit-shop-dishes'), n => n.tag === 'input');
-  assert.equal(String(price.value), '45');
+  assert.equal(String(price.value), '40');
   price.value = '50';
   p.el('edit-shop-reason').value = 'Friday & Saturday';
   await p.ctx.saveShopChanges();
   assert.equal(p.writes[0].id, id);
-  assert.equal(p.writes[0].data.dishes[0].price, 50);
+  assert.equal(p.writes[0].data.dishes[0].price, 55);
   assert.equal(p.writes[0].data.closureReason, 'Friday & Saturday');
+});
+
+test('a blank or broken hotel price is refused instead of silently keeping the old price', async () => {
+  const p = portal('cloud');
+  p.snapshot('tiffin_shops', [['sample', { name: 'Sample kitchen', status: 'open', dishes: [{ name: 'Idli', price: 45 }] }]]);
+  for (const typed of ['', '0', '12.5', '-3', '296']) {
+    p.ctx.openEditShopModal('sample');
+    p.el('dish-price-0').value = typed;
+    await p.ctx.saveShopChanges();
+    assert.equal(p.writes.length, 0, typed);
+    assert.match(p.messages.at(-1), /Idli: .*hotel price/, typed);
+    assert.ok(p.el('edit-shop-modal').classList.contains('open'));
+  }
+  p.el('dish-price-0').value = ' 45 ';
+  await p.ctx.saveShopChanges();
+  assert.equal(p.writes[0].data.dishes[0].price, 50);
 });
 
 test('offer punctuation is plain text and pause/delete target the selected offer', async () => {

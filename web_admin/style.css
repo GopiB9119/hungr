@@ -759,9 +759,12 @@ body {
   border-bottom: none;
 }
 
-.dish-edit-row span {
+.dish-edit-row label, .dish-edit-row small {
   font-size: 12px;
 }
+
+.dish-price-field { text-align: right; }
+.dish-price-field small { display: block; margin-top: 4px; color: var(--text-secondary); }
 
 .dish-edit-row input {
   width: 70px;

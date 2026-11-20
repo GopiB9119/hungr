@@ -42,4 +42,14 @@ if ($Verify) {
     } finally {
         Pop-Location
     }
+    Push-Location (Join-Path $PSScriptRoot '..')
+    try {
+        & node --test web_admin/pricing.test.js qa/admin/catalog.test.cjs
+        if ($LASTEXITCODE -ne 0) { throw "Admin pricing tests failed (exit $LASTEXITCODE)." }
+    } finally {
+        Pop-Location
+    }
+    # Needs the Firebase CLI and Java; uses only the demo-hungr emulators.
+    & (Join-Path $PSScriptRoot 'rules-test\run.ps1')
+    if ($LASTEXITCODE -ne 0) { throw "Security rules tests failed (exit $LASTEXITCODE)." }
 }

@@ -15,19 +15,21 @@ class CartState {
   final PassTierType? selectedPassTier;
   final int selectedPassDays;
   final Map<String, int> itemQuantities;
+  final Map<String, TiffinItem> shopItems;
   final String selectedDeliverySlot;
   final String? appliedCoupon;
   final int discountAmount;
   final String deliveryInstructions;
   final String paymentMethod;
   final int roommateMealCount; // +₹45 Companion Meal (Same Gate Bag)
-  final bool autoRotatePassMenu; // Auto-rotate 6 authentic Khammam specialties
+  final bool autoRotatePassMenu;
 
   const CartState({
     this.orderMode = OrderMode.singleDay,
     this.selectedPassTier = PassTierType.routine7Day,
     this.selectedPassDays = 7,
     this.itemQuantities = const {},
+    this.shopItems = const {},
     this.selectedDeliverySlot = '07:30 AM – 08:00 AM',
     this.appliedCoupon,
     this.discountAmount = 0,
@@ -39,6 +41,12 @@ class CartState {
 
   factory CartState.initial() => const CartState();
 
+  // Different kitchens may offer the same dish at different prices.
+  static String shopItemKey(String shopId, String itemId) =>
+      '${Uri.encodeComponent(shopId)}/${Uri.encodeComponent(itemId)}';
+
+  TiffinItem? itemForKey(String key) => shopItems[key] ?? TiffinItem.findById(key);
+
   /// Total cost of companion roommate meals (₹45 each, instead of ₹59)
   int get roommateSubtotal => roommateMealCount * 45;
 
@@ -46,7 +54,7 @@ class CartState {
   int get itemsSubtotal {
     int sum = 0;
     for (final entry in itemQuantities.entries) {
-      final item = TiffinItem.findById(entry.key);
+      final item = itemForKey(entry.key);
       if (item != null) {
         sum += item.price * entry.value;
       }
@@ -70,10 +78,10 @@ class CartState {
   /// Total customer savings including item discounts, pass subsidies, and coupons
   int get savingsAmount {
     int itemSavings = 0;
-    for (final entry in itemQuantities.entries) {
-      final item = TiffinItem.findById(entry.key);
-      if (item != null && item.originalPrice > item.price) {
-        itemSavings += (item.originalPrice - item.price) * entry.value;
+    if (orderMode == OrderMode.singleDay) {
+      for (final entry in itemQuantities.entries) {
+        final item = itemForKey(entry.key);
+        if (item != null) itemSavings += item.savingsAmount * entry.value;
       }
     }
 
@@ -95,7 +103,7 @@ class CartState {
   /// Final payable amount after deducting active coupon discounts
   int get totalPayable {
     final baseAmount = orderMode == OrderMode.subscriptionPass
-        ? passSubtotal + itemsSubtotal
+        ? passSubtotal + roommateSubtotal
         : itemsSubtotal;
 
     final payable = baseAmount - discountAmount;
@@ -110,7 +118,7 @@ class CartState {
   /// Whether cart currently has any items or a valid pass configured
   bool get isEmpty {
     if (orderMode == OrderMode.subscriptionPass) {
-      return selectedPassTier == null && itemQuantities.isEmpty && roommateMealCount == 0;
+      return selectedPassTier == null;
     }
     return itemQuantities.isEmpty && roommateMealCount == 0;
   }
@@ -121,6 +129,7 @@ class CartState {
     bool clearPassTier = false,
     int? selectedPassDays,
     Map<String, int>? itemQuantities,
+    Map<String, TiffinItem>? shopItems,
     String? selectedDeliverySlot,
     String? appliedCoupon,
     bool clearCoupon = false,
@@ -136,6 +145,7 @@ class CartState {
           clearPassTier ? null : (selectedPassTier ?? this.selectedPassTier),
       selectedPassDays: selectedPassDays ?? this.selectedPassDays,
       itemQuantities: itemQuantities ?? this.itemQuantities,
+      shopItems: shopItems ?? this.shopItems,
       selectedDeliverySlot:
           selectedDeliverySlot ?? this.selectedDeliverySlot,
       appliedCoupon: clearCoupon ? null : (appliedCoupon ?? this.appliedCoupon),
@@ -171,40 +181,35 @@ class CartViewModel extends StateNotifier<CartState> {
   }
 
   /// Increase item quantity by 1
-  void addItem(String itemId) {
-    final updated = Map<String, int>.from(state.itemQuantities);
-    updated[itemId] = (updated[itemId] ?? 0) + 1;
-    state = state.copyWith(itemQuantities: updated);
+  void addItem(String itemId, {TiffinItem? dish}) {
+    state = state.copyWith(
+      orderMode: OrderMode.singleDay,
+      itemQuantities: {...state.itemQuantities, itemId: (state.itemQuantities[itemId] ?? 0) + 1},
+      shopItems: dish == null ? null : {...state.shopItems, itemId: dish},
+    );
   }
 
-  /// Decrease item quantity by 1, removing from cart when quantity drops to 0
   void removeItem(String itemId) {
-    final updated = Map<String, int>.from(state.itemQuantities);
-    if (!updated.containsKey(itemId)) return;
-
-    final currentQty = updated[itemId]!;
-    if (currentQty <= 1) {
-      updated.remove(itemId);
-    } else {
-      updated[itemId] = currentQty - 1;
-    }
-    state = state.copyWith(itemQuantities: updated);
+    final currentQty = state.itemQuantities[itemId];
+    if (currentQty != null) setItemQuantity(itemId, currentQty - 1);
   }
 
-  /// Explicitly set item quantity (removes item if quantity <= 0)
   void setItemQuantity(String itemId, int quantity) {
-    final updated = Map<String, int>.from(state.itemQuantities);
     if (quantity <= 0) {
-      updated.remove(itemId);
+      state = state.copyWith(
+        itemQuantities: {...state.itemQuantities}..remove(itemId),
+        shopItems: {...state.shopItems}..remove(itemId),
+      );
     } else {
-      updated[itemId] = quantity;
+      state = state.copyWith(
+        orderMode: OrderMode.singleDay,
+        itemQuantities: {...state.itemQuantities, itemId: quantity},
+      );
     }
-    state = state.copyWith(itemQuantities: updated);
   }
 
-  /// Clear all selected items from the cart
   void clearCart() {
-    state = state.copyWith(itemQuantities: const {});
+    state = state.copyWith(itemQuantities: const {}, shopItems: const {});
   }
 
   /// Switch between Single Day Tiffin and Subscription Pass order modes

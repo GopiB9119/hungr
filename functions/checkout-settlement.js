@@ -1,5 +1,6 @@
 const { createHash } = require("node:crypto");
 
+const PAYMENT_PROVIDER = "razorpay";
 const positiveInt = (n) => Number.isSafeInteger(n) && n > 0;
 const text = (s, max = 256) => typeof s === "string" && s.length > 0 && s.length <= max &&
   s === s.trim() && !/[\u0000-\u001f\u007f]/.test(s);
@@ -13,7 +14,7 @@ function calendarDate(s) {
 
 // Shared by the hold writer and settlement; lifecycle state and clock are checked separately.
 function checkCheckoutTerms(order) {
-  if (!fixedId(order?.orderId) || !text(order.uid, 128) || !text(order.provider) ||
+  if (!fixedId(order?.orderId) || !text(order.uid, 128) || order.provider !== PAYMENT_PROVIDER ||
       !text(order.merchantOrderRef) || !positiveInt(order.amountMinor) || !currencyCode(order.currency)) {
     throw new Error("Invalid checkout terms");
   }
@@ -34,11 +35,10 @@ function checkCheckoutTerms(order) {
 
 // Internal only. The hold writer atomically reserves one portion per serviceDate
 // and creates checkout_orders/{orderId} with immutable terms and status HELD.
-// lookupCapture must independently verify capture, account and order metadata;
-// provider identifies a configured account/environment namespace, never a URL.
+// lookupCapture must independently verify the Razorpay capture, account and order metadata.
 function createCheckoutSettlement({ db, lookupCapture, serverTimestamp, now = Date.now }) {
   return async ({ orderId, provider, paymentId }) => {
-    if (!fixedId(orderId) || !text(provider) || !text(paymentId)) throw new Error("Invalid checkout reference");
+    if (!fixedId(orderId) || provider !== PAYMENT_PROVIDER || !text(paymentId)) throw new Error("Invalid checkout reference");
     // No provider I/O in a Firestore retry. Only the authenticated lookup may supply these fields.
     const capture = await lookupCapture({ provider, paymentId });
     if (capture?.status !== "CAPTURED" || capture.provider !== provider || capture.paymentId !== paymentId ||
@@ -57,19 +57,36 @@ function createCheckoutSettlement({ db, lookupCapture, serverTimestamp, now = Da
           order.currency !== currency) throw new Error("Capture does not match reserved order");
       checkCheckoutTerms(order);
 
-      const receipt = { orderId, passId };
-      if (order.status === "SETTLED") {
-        const claim = claimDoc.data();
-        if (order.paymentId === paymentId && order.passId === passId &&
-            claim?.orderId === orderId && claim.provider === provider && claim.paymentId === paymentId) return receipt;
-        throw new Error("Conflicting settlement");
-      }
-      if (claimDoc.exists) throw new Error("Payment already claimed");
-      if (order.status !== "HELD" || order.paymentId != null || order.passId != null) throw new Error("Order not held");
       const clock = now();
-      if (!Number.isSafeInteger(clock) || clock < 0 || clock >= order.holdExpiresAtMs) throw new Error("Hold not active");
+      if (!Number.isSafeInteger(clock) || clock < 0) throw new Error("Invalid settlement clock");
+      const receipt = { orderId, passId };
+      const creditReceipt = { orderId, passId: null, creditId: key, status: "CREDITED" };
+      const claim = claimDoc.data();
+      if (claimDoc.exists) {
+        if (claim.orderId === orderId && claim.provider === provider && claim.paymentId === paymentId) {
+          if (claim.outcome === "CREDIT" && claim.creditId === key) return creditReceipt;
+          if (claim.outcome === undefined && claim.creditId === undefined && order.status === "SETTLED" &&
+              order.paymentId === paymentId && order.passId === passId) return receipt;
+        }
+        throw new Error("Payment already claimed");
+      }
+
+      let reason;
+      if (order.status === "SETTLED") {
+        if (!text(order.paymentId) || order.paymentId === paymentId) throw new Error("Conflicting settlement");
+        reason = "DUPLICATE_PAYMENT";
+      } else if (order.status !== "HELD" || clock >= order.holdExpiresAtMs) {
+        reason = "HOLD_NOT_ACTIVE";
+      } else if (order.paymentId != null || order.passId != null) throw new Error("Order not held");
 
       const createdAt = serverTimestamp();
+      if (reason) {
+        tx.create(claimRef, { orderId, provider, paymentId, outcome: "CREDIT", creditId: key });
+        tx.create(db.collection("customer_credits").doc(key), {
+          creditId: key, userId: uid, amountMinor, currency, provider, paymentId, orderId, reason, status: "AVAILABLE", createdAt,
+        });
+        return creditReceipt;
+      }
       tx.create(claimRef, { orderId, provider, paymentId });
       tx.create(db.collection("passes").doc(passId), {
         passId, orderId, userId: uid, hardExpiryDate: order.hardExpiryDate, createdAt,
@@ -87,4 +104,4 @@ function createCheckoutSettlement({ db, lookupCapture, serverTimestamp, now = Da
   };
 }
 
-module.exports = { checkCheckoutTerms, createCheckoutSettlement };
+module.exports = { PAYMENT_PROVIDER, checkCheckoutTerms, createCheckoutSettlement };

@@ -10,6 +10,8 @@ import '../../../../core/constants/app_typography.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/utils/date_time_utils.dart';
 import '../../domain/tiffin_item_model.dart';
+import '../../domain/tiffin_shop_model.dart';
+import '../viewmodels/tiffin_shops_viewmodel.dart';
 import '../viewmodels/cart_viewmodel.dart';
 import '../viewmodels/customer_dashboard_viewmodel.dart';
 import '../widgets/pass_card_3d.dart';
@@ -469,7 +471,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
 
           if (isSingleDay) ...[
             ...cartState.itemQuantities.entries.map((entry) {
-              final item = TiffinItem.findById(entry.key);
+              final item = cartState.itemForKey(entry.key);
               if (item == null) return const SizedBox.shrink();
 
               return Padding(
@@ -516,7 +518,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           InkWell(
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              cartNotifier.removeItem(item.id);
+                              cartNotifier.removeItem(entry.key);
                             },
                             child: const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 6),
@@ -533,7 +535,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           InkWell(
                             onTap: () {
                               HapticFeedback.lightImpact();
-                              cartNotifier.addItem(item.id);
+                              cartNotifier.addItem(entry.key);
                             },
                             child: const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 6),
@@ -631,7 +633,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                           ),
                         ),
                         Text(
-                          'Mon: Set Dosa • Tue: Thatte Idli • Wed: Poori • Thu: Pesarattu • Fri: Bonda • Sat: Udupi Dosa',
+                          passRotationItems(ref.watch(tiffinShopsProvider))
+                              .map((dish) => dish.name)
+                              .join(' • '),
                           style: AppTypography.caption.copyWith(
                             color: AppColors.textSecondary,
                             fontSize: 9.5,

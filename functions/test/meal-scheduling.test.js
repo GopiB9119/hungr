@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createSkipMealTicket, scheduleKitchenSplit, failoverKitchenUnit } = require("../meal-scheduling");
+const { createSkipMealTicket, replaceMissedMeal, scheduleKitchenSplit, failoverKitchenUnit } = require("../meal-scheduling");
 const { MemoryDB } = require("../test-support/memory-db");
 
 class HttpsError extends Error {
@@ -19,8 +19,11 @@ function setup(rows = {}) {
     [pass]: { userId: "customer", hardExpiryDate: "2030-02-03" }, [source]: ticket(), ...rows,
   });
   const clock = { ms: Date.parse("2030-01-30T15:29:59.999Z") }; // 20:59:59.999 IST
-  const handler = createSkipMealTicket({ db, HttpsError, serverTimestamp, now: () => clock.ms });
-  return { db, clock, skip: (id = "one") => handler({ ticketId: id }, { auth: { uid: "customer" } }) };
+  const scheduling = { db, HttpsError, serverTimestamp, now: () => clock.ms };
+  const handler = createSkipMealTicket(scheduling);
+  const skip = (id = "one") => handler({ ticketId: id }, { auth: { uid: "customer" } });
+  const replace = (placement = "NEXT_DAY", ticketId = "one") => replaceMissedMeal(scheduling, { ticketId, placement });
+  return { db, clock, skip, replace };
 }
 const scheduled = (db) => [...db.rows.values()].filter((row) => row.status === "SCHEDULED");
 
@@ -151,6 +154,140 @@ test("a transaction retried across 21:00 rechecks the server clock", async () =>
   await assert.rejects(skip(), /CUTOFF_EXCEEDED/);
   assert.equal(db.retries, 1);
   assert.equal(db.writes, 0);
+});
+
+test("NEXT_DAY replaces a disputed delivery with the same meal, even if tomorrow already has a ticket", async () => {
+  const missed = ticket({ status: "DELIVERED", deliveryDate: "2030-01-30", slot: "EVENING", addOns: ["coffee"],
+    companionMeals: 1, specialtyName: "Dosa", bagToken: "#01", clusterName: "Gate", assignedDriverId: "old" });
+  const tomorrow = ticket();
+  const { db, replace } = setup({ [source]: missed, "meal_tickets/tomorrow": tomorrow });
+  const receipt = await replace();
+  const id = receipt.newTicketId, date = "2030-01-31T00:00:00.000Z";
+  assert.deepEqual(receipt, { success: true, newTicketId: id, newScheduledDate: date,
+    placement: "NEXT_DAY", passExpiryExtended: false });
+  assert.deepEqual(db.rows.get(source), { ...missed, status: "MISSED", missedAt: "server-time",
+    replacementTicketId: id, missedPlacement: "NEXT_DAY" });
+  assert.deepEqual(db.rows.get(`meal_tickets/${id}`), {
+    ticketId: id, passId: "short", userId: "customer", clusterId: "gate", comboSelection: "A",
+    addOns: ["coffee"], slot: "EVENING", clusterName: "Gate", companionMeals: 1, specialtyName: "Dosa",
+    bagToken: "#01", deliveryDate: date, status: "SCHEDULED", createdAt: "server-time",
+    replacesTicketId: "one", reason: "MISSED_DELIVERY",
+  });
+  assert.equal(db.rows.get("meal_tickets/tomorrow"), tomorrow);
+  assert.equal(db.writes, 2);
+});
+
+test("from 21:00 IST the first open day for a missed meal is the day after tomorrow", async () => {
+  for (const [placement, instant] of [["NEXT_DAY", "2030-01-30T15:30:01Z"], ["END_OF_PASS", "2030-01-30T15:30:00Z"]]) {
+    const { db, clock, replace } = setup({ [source]: ticket({ deliveryDate: "2030-01-28" }) });
+    clock.ms = Date.parse(instant);
+    const result = await replace(placement);
+    assert.equal(result.newScheduledDate, "2030-02-01T00:00:00.000Z");
+    assert.deepEqual(db.rows.get(`meal_tickets/${result.newTicketId}`).addOns, []);
+    assert.equal(db.rows.get(`meal_tickets/${result.newTicketId}`).slot, "MORNING");
+  }
+});
+
+test("END_OF_PASS follows the last scheduled or locked IST service day for this user and pass only", async () => {
+  for (const status of ["SCHEDULED", "LOCKED"]) {
+    const { db, replace } = setup({
+      [source]: ticket({ status: "LOCKED", deliveryDate: "2030-01-30" }),
+      "meal_tickets/tail": ticket({ status, deliveryDate: stamp("2030-02-01T18:30:00Z") }),
+      "meal_tickets/other-pass": ticket({ passId: "long", deliveryDate: "2030-02-09" }),
+      "meal_tickets/other-user": ticket({ userId: "other", deliveryDate: "2030-02-08" }),
+      "meal_tickets/inactive": ticket({ status: "SKIPPED", deliveryDate: "2030-02-07" }),
+    });
+    const result = await replace("END_OF_PASS");
+    assert.equal(result.newScheduledDate, "2030-02-03T00:00:00.000Z");
+    assert.equal(db.rows.get(source).missedPlacement, "END_OF_PASS");
+    assert.equal(result.passExpiryExtended, false);
+    assert.equal(db.writes, 2);
+  }
+});
+
+test("a missed meal beyond inclusive pass expiry extends that pass to the replacement day", async () => {
+  const original = { userId: "customer", hardExpiryDate: stamp("2030-01-31T18:29:59.999Z"), orderId: "paid" };
+  const { db, clock, replace } = setup({ [pass]: original });
+  clock.ms = Date.parse("2030-01-30T18:30:00Z"); // Jan 31 IST
+  const result = await replace();
+  assert.equal(result.passExpiryExtended, true);
+  assert.equal(result.newScheduledDate, "2030-02-01T00:00:00.000Z");
+  assert.deepEqual(db.rows.get(pass), { ...original, hardExpiryDate: "2030-02-01" });
+  assert.equal(db.writes, 3);
+});
+
+test("a future IST meal cannot be marked missed", async () => {
+  const { db, replace } = setup({ [source]: ticket({ deliveryDate: stamp("2030-01-30T18:30:00Z") }) });
+  await assert.rejects(replace(), { code: "failed-precondition" });
+  assert.equal(db.writes, 0);
+});
+
+test("a skipped ticket or a missed ticket without a valid replacement cannot be replaced", async () => {
+  for (const fields of [{ status: "SKIPPED" }, { status: "MISSED" }, { status: "MISSED", replacementTicketId: "one" },
+    { status: "MISSED", replacementTicketId: "absent" }, { status: "MISSED", replacementTicketId: "foreign" },
+    { status: "MISSED", replacementTicketId: "different-pass" }]) {
+    const { db, replace } = setup({ [source]: ticket({ deliveryDate: "2030-01-30", ...fields }),
+      "meal_tickets/foreign": ticket({ userId: "other" }), "meal_tickets/different-pass": ticket({ passId: "long" }) });
+    await assert.rejects(replace(), { code: "failed-precondition" });
+    assert.equal(db.writes, 0);
+  }
+});
+
+test("replacement validates the request, pass ownership and meal terms before writing", async () => {
+  for (const [rows, placement, id, code] of [
+    [{}, "LATER", "one", "invalid-argument"], [{}, "NEXT_DAY", "bad/id", "invalid-argument"],
+    [{}, "NEXT_DAY", "absent", "not-found"], [{ [source]: ticket({ passId: "absent" }) }, "NEXT_DAY", "one", "not-found"],
+    [{ [source]: ticket({ passId: "bad/id" }) }, "NEXT_DAY", "one", "failed-precondition"],
+    [{ [pass]: { userId: "other", hardExpiryDate: "2030-02-03" } }, "NEXT_DAY", "one", "failed-precondition"],
+    ...[{ clusterId: "" }, { comboSelection: null }, { deliveryDate: "bad" }].map((fields) =>
+      [{ [source]: ticket({ ...fields }) }, "NEXT_DAY", "one", "failed-precondition"]),
+    [{ [pass]: { userId: "customer", hardExpiryDate: "bad" } }, "NEXT_DAY", "one", "failed-precondition"],
+    [{ "meal_tickets/tail": ticket({ deliveryDate: "bad" }) }, "END_OF_PASS", "one", "failed-precondition"],
+  ]) {
+    const { db, clock, replace } = setup(rows);
+    clock.ms = Date.parse("2030-01-31T09:00:00Z");
+    await assert.rejects(replace(placement, id), { code });
+    assert.equal(db.writes, 0);
+  }
+});
+
+test("overlapping missed reports and a later replay return the original replacement and placement", async () => {
+  const { db, clock, replace } = setup({ [source]: ticket({ deliveryDate: "2030-01-30" }) });
+  const [a, b] = await Promise.all([replace(), replace("END_OF_PASS")]);
+  assert.deepEqual(a, b);
+  assert.ok(db.retries > 0);
+  clock.ms += 86_400_000;
+  assert.deepEqual(await replace("END_OF_PASS"), a);
+  assert.equal(db.rows.get(source).replacementTicketId, a.newTicketId);
+  assert.equal(db.writes, 2);
+});
+
+test("a missed delivery replacement does not spend the customer's remaining third skip", async () => {
+  const { db, replace, skip } = setup({ [source]: ticket({ deliveryDate: "2030-01-30" }),
+    "meal_tickets/s1": ticket({ status: "SKIPPED" }), "meal_tickets/s2": ticket({ status: "SKIPPED" }) });
+  const replacement = await replace();
+  const third = await skip(replacement.newTicketId);
+  assert.equal(third.newScheduledDate, "2030-02-01T00:00:00.000Z");
+  assert.equal(db.rows.get(source).status, "MISSED");
+  await assert.rejects(skip(third.newTicketId), /SKIP_LIMIT_REACHED/);
+});
+
+test("a replacement never overfills the two kitchens; END_OF_PASS moves to the next day with room", async () => {
+  // Two other customers already fill Jan 31 with 50 + 49 portions; the missed meal needs 2.
+  const full = {
+    [source]: ticket({ deliveryDate: "2030-01-30", companionMeals: 1 }),
+    "meal_tickets/big1": ticket({ userId: "other", passId: "long", companionMeals: 49 }),
+    "meal_tickets/big2": ticket({ userId: "other", passId: "long", companionMeals: 48, status: "LOCKED", assignedVendorId: "aunty_2" }),
+  };
+  const next = setup(full);
+  await assert.rejects(next.replace("NEXT_DAY"), { code: "failed-precondition", message: /KITCHEN_FULL.*2030-01-31/ });
+  assert.equal(next.db.writes, 0);
+  const end = setup(full);
+  const moved = await end.replace("END_OF_PASS");
+  assert.equal(moved.newScheduledDate, "2030-02-01T00:00:00.000Z");
+  assert.equal(end.db.rows.get(source).replacementTicketId, moved.newTicketId);
+  const fits = setup({ ...full, "meal_tickets/big2": ticket({ userId: "other", passId: "long", companionMeals: 47 }) });
+  assert.equal((await fits.replace("NEXT_DAY")).newScheduledDate, "2030-01-31T00:00:00.000Z");
 });
 
 function register(db) {

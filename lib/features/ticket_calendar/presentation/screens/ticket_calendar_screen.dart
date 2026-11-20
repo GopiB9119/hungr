@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/app_dimensions.dart';
 import '../../../../core/constants/app_typography.dart';
+import '../../../../core/constants/business_rules.dart';
 import '../../../../core/router/route_names.dart';
+import '../../../../core/utils/date_time_utils.dart';
 import '../../../../core/widgets/obsidian_card.dart';
 import '../../../storefront/presentation/viewmodels/customer_dashboard_viewmodel.dart';
 import '../../domain/meal_ticket_model.dart';
@@ -98,17 +100,24 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                       ),
                       onPressed: () {
                         Navigator.of(context).pop();
-                        final success = ref.read(customerDashboardProvider.notifier).togglePauseTicket(ticket.ticketId);
+                        final dashboard = ref.read(customerDashboardProvider.notifier);
+                        final noSkipsLeft = dashboard.skipsLeftFor(ticket) == 0;
+                        final success = dashboard.togglePauseTicket(ticket.ticketId);
                         HapticFeedback.mediumImpact();
-                        if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              backgroundColor: AppColors.matteCharcoal,
-                              content: Text('Meal paused! Replacement ticket added to next week.', style: AppTypography.labelLarge),
-                              behavior: SnackBarBehavior.floating,
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            backgroundColor: AppColors.matteCharcoal,
+                            content: Text(
+                              success
+                                  ? 'Meal paused! Replacement ticket added to next week.'
+                                  : noSkipsLeft
+                                    ? 'You have used all ${BusinessRules.maxSkipsPerPass} skips for this pass.'
+                                    : 'Cannot pause: skips require a future meal and close at 9:00 PM IST.',
+                              style: AppTypography.labelLarge,
                             ),
-                          );
-                        }
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
                       },
                       child: const Text('Confirm Pause'),
                     ),
@@ -218,6 +227,7 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
   Widget build(BuildContext context) {
     final dashboardState = ref.watch(customerDashboardProvider);
     final tickets = dashboardState.tickets;
+    final tomorrow = DateTimeUtils.nowIst().add(const Duration(days: 1));
     final openedFromLink = widget.highlightTicketId != null || widget.highlightToken != null;
 
     final filteredTickets = tickets.where((ticket) {
@@ -366,8 +376,11 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                   (context, index) {
                     final ticket = filteredTickets[index];
                     final isSkipped = ticket.status == TicketStatusType.skipped;
-                    final isTomorrow = index == 0;
-                    final dateFormatted = DateFormat('EEE, dd MMM yyyy').format(ticket.deliveryDate);
+                    final isMissed = ticket.status == TicketStatusType.missed;
+                    final day = ticket.deliveryDate.isUtc
+                        ? DateTimeUtils.nowIst(instant: ticket.deliveryDate) : ticket.deliveryDate;
+                    final isTomorrow = !isMissed && DateUtils.isSameDay(day, tomorrow);
+                    final dateFormatted = DateFormat('EEE, dd MMM yyyy').format(day);
                     final comboTitle = ticket.comboSelection == 'A'
                         ? 'Option A: 2 Hot Set Dosas'
                         : 'Option B: 4 Idlis + 1 Vada';
@@ -443,15 +456,15 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: isSkipped
+                                    color: isSkipped || isMissed
                                         ? AppColors.urgentCrimson.withOpacity(0.18)
                                         : AppColors.neonMint.withOpacity(0.15),
                                     borderRadius: AppDimensions.radius8,
                                   ),
                                   child: Text(
-                                    isSkipped ? 'PAUSED' : 'CONFIRMED',
+                                    isMissed ? 'MISSED' : (isSkipped ? 'PAUSED' : 'CONFIRMED'),
                                     style: AppTypography.monoBadge.copyWith(
-                                      color: isSkipped ? AppColors.urgentCrimson : AppColors.neonMint,
+                                      color: isSkipped || isMissed ? AppColors.urgentCrimson : AppColors.neonMint,
                                       fontSize: 9.5,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -487,7 +500,7 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                                       ),
                                       const SizedBox(height: 1),
                                       Text(
-                                        isSkipped
+                                        isMissed ? ticket.missedMessage : isSkipped
                                             ? 'Pushed to end of subscription'
                                             : '07:30 AM • ${ticket.clusterName}${ticket.companionMeals > 0 ? " • (+${ticket.companionMeals} Roommate Meal)" : ""}',
                                         style: AppTypography.bodySmall.copyWith(
@@ -501,7 +514,7 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 // Action Buttons
-                                if (!isSkipped) ...[
+                                if (ticket.status == TicketStatusType.scheduled) ...[
                                   InkWell(
                                     onTap: () => _showSwitchComboModal(ticket),
                                     borderRadius: AppDimensions.radius8,
@@ -534,11 +547,22 @@ class _TicketCalendarScreenState extends ConsumerState<TicketCalendarScreen> {
                                       ),
                                     ),
                                   ),
-                                ] else
+                                ] else if (isSkipped)
                                   InkWell(
                                     onTap: () {
                                       HapticFeedback.lightImpact();
-                                      ref.read(customerDashboardProvider.notifier).togglePauseTicket(ticket.ticketId);
+                                      if (!ref.read(customerDashboardProvider.notifier).togglePauseTicket(ticket.ticketId)) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            backgroundColor: AppColors.matteCharcoal,
+                                            content: Text(
+                                              'Cannot resume: changes for a meal close at 9:00 PM IST the day before.',
+                                              style: AppTypography.labelLarge,
+                                            ),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      }
                                     },
                                     borderRadius: AppDimensions.radius8,
                                     child: Container(

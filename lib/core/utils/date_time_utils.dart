@@ -48,6 +48,16 @@ class DateTimeUtils {
     return now.isBefore(_todayCutoffUtc(now));
   }
 
+  static bool canSkipMeal(DateTime serviceDate, {required DateTime instant}) {
+    if (!canModifyTomorrowMeal(instant: instant)) return false;
+    final today = nowIst(instant: instant);
+    // Timestamps and zoned ISO strings decode as UTC instants. Unzoned dates
+    // carry the service day's calendar fields, regardless of device timezone.
+    final day = serviceDate.isUtc ? nowIst(instant: serviceDate) : serviceDate;
+    return DateTime.utc(day.year, day.month, day.day)
+        .isAfter(DateTime.utc(today.year, today.month, today.day));
+  }
+
   /// Whether current time is past 9:00 PM today (tomorrow's batch is locked for woodfire prep)
   static bool isAfterCutoffToday({DateTime? instant}) =>
       !canModifyTomorrowMeal(instant: instant);

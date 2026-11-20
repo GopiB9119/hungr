@@ -36,10 +36,24 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final shops = ref.watch(tiffinShopsProvider);
-    final shop = shops.firstWhere(
-      (s) => s.id == widget.shopId,
-      orElse: () => shops.first,
-    );
+    final shop = shops.where((s) => s.id == widget.shopId).firstOrNull;
+    if (shop == null) {
+      // The live catalog can drop a kitchen; never show (and bill) a different one instead.
+      return Scaffold(
+        backgroundColor: AppColors.obsidianBackground,
+        appBar: AppBar(backgroundColor: Colors.white, elevation: 0),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'This kitchen is not available right now.',
+              textAlign: TextAlign.center,
+              style: AppTypography.titleMedium,
+            ),
+          ),
+        ),
+      );
+    }
 
     final cartState = ref.watch(cartProvider);
     final cartNotifier = ref.read(cartViewModelProvider.notifier);
@@ -408,7 +422,8 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
 
                         // Items List
                         ...displayedItems.map((item) {
-                          final quantity = cartState.itemQuantities[item.id] ?? 0;
+                          final key = CartState.shopItemKey(shop.id, item.id);
+                          final quantity = cartState.itemQuantities[key] ?? 0;
                           return isClosed
                               ? Opacity(
                                   opacity: 0.6,
@@ -433,14 +448,8 @@ class _ShopDetailsScreenState extends ConsumerState<ShopDetailsScreen> {
                               : TiffinItemCard(
                                   item: item,
                                   quantity: quantity,
-                                  onAdd: () {
-                                    // Ensure single day mode is active for item additions
-                                    if (cartState.orderMode != OrderMode.singleDay) {
-                                      cartNotifier.setOrderMode(OrderMode.singleDay);
-                                    }
-                                    cartNotifier.addItem(item.id);
-                                  },
-                                  onRemove: () => cartNotifier.removeItem(item.id),
+                                  onAdd: () => cartNotifier.addItem(key, dish: item),
+                                  onRemove: () => cartNotifier.removeItem(key),
                                 );
                         }),
                       ],

@@ -18,10 +18,8 @@ class TiffinShopsViewModel extends StateNotifier<List<TiffinShop>> {
       final stream = catalogStream ?? FirebaseService.instance.streamTiffinShops();
       _firestoreSubscription = stream.listen(
         (remoteShops) {
-          if (remoteShops.isNotEmpty) {
-            state = remoteShops;
-            debugPrint('🔄 [TiffinShops] Synced ${remoteShops.length} live kitchens from Firestore');
-          }
+          state = remoteShops;
+          debugPrint('🔄 [TiffinShops] Synced ${remoteShops.length} live kitchens from Firestore');
         },
         onError: (err) {
           debugPrint('⚠️ [TiffinShops] Firestore catalog stream notice: $err');

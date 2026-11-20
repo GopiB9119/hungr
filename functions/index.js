@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
-const { createSkipMealTicket, scheduleKitchenSplit, failoverKitchenUnit } = require("./meal-scheduling");
+const { createSkipMealTicket, replaceMissedMeal, scheduleKitchenSplit, failoverKitchenUnit } = require("./meal-scheduling");
+const { finalizeDeliveryProof } = require("./delivery-proof");
 const { requireOpsAdmin } = require("./ops-access");
 
 admin.initializeApp();
@@ -11,7 +12,16 @@ const scheduling = {
   serverTimestamp: () => admin.firestore.FieldValue.serverTimestamp(),
 };
 exports.skipMealTicket = functions.https.onCall(createSkipMealTicket(scheduling));
+exports.replaceMissedMeal = functions.https.onCall(async (data, context) => {
+  requireOpsAdmin(context, functions.https.HttpsError);
+  return replaceMissedMeal(scheduling, data);
+});
 exports.autoAggregateKitchenSplit = scheduleKitchenSplit(functions.pubsub, scheduling);
+exports.finalizeDeliveryProof = functions.storage.object().onFinalize((object) => finalizeDeliveryProof({
+  ...scheduling,
+  clearDownloadTokens: ({ bucket, name }) => admin.storage().bucket(bucket).file(name)
+    .setMetadata({ metadata: { firebaseStorageDownloadTokens: null } }),
+}, object));
 
 /**
  * 3. broadcastBatchArrival (Callable)

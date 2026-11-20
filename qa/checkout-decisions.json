@@ -1,38 +1,44 @@
 [
   {
     "question": "Which payment provider should we use in test mode?",
-    "answer": "Razorpay or PhonePe. Not final yet.",
-    "followUp": "Pick one: Razorpay or PhonePe.",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "Razorpay. The server now accepts only Razorpay payments.",
+    "followUp": "Who opens the Razorpay account, and when can we get test-mode keys? Keys go in server settings, never in the app code.",
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   },
   {
     "question": "Which shop menu and prices are approved, and where does the server read them?",
-    "answer": "Breakfast (tiffin) items. Customer price is the same as the hotel's own price plus Rs 5.",
-    "followUp": "Is the Rs 5 per item or per order? Which hotels, and who enters their prices? How is a pass priced? Can we remove the crossed-out 'original price' and 'SAVE Rs' labels, since our price is above the hotel price?",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "Breakfast (tiffin) items. Customer price = the hotel's own price + Rs 5 per item, built into the shown price. A pass meal must cost Rs 50 or less.",
+    "followUp": "Which hotels join first, what are their real prices, and who types them into the admin portal? What does each pass (3, 7, 15 days) cost?",
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   },
   {
     "question": "Which delivery days does each pass cover, including closures and skips?",
-    "answer": "The pass covers every day. A customer can skip 3 times.",
-    "followUp": "Is it 3 skips per pass (the server now enforces this) or 3 per month?",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "The pass covers every day. A customer can skip 3 meals per pass. The server and the app both enforce this.",
+    "followUp": null,
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   },
   {
     "question": "If a payment succeeds but a meal cannot be supplied, what refund or replacement is approved?",
-    "answer": "No refund. The customer gets the food the next day.",
-    "followUp": "Is the replacement an extra meal the next day, or one more day added at the end of the pass? If money is taken but no pass is created, or a customer pays twice, that money must be returned - confirm.",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "No refund for a missed meal: it is added the next day or at the end of the pass. If a customer pays twice or pays too late, the money is kept as credit for another pass, or refunded if the customer asks.",
+    "followUp": "Who handles a refund request, and how fast? Credits are saved by the server; refunds are done by hand in Razorpay for now.",
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   },
   {
     "question": "Which area launches first, and how many meals per day can each kitchen make?",
-    "answer": "Any area in Khammam. Each kitchen handles its own orders.",
-    "followUp": "About how many breakfasts can each kitchen make per day? We need a limit so we never sell more than a kitchen can cook.",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "Any area in Khammam. Each kitchen makes about 50 breakfasts a day; the daily kitchen split already stops at 50.",
+    "followUp": null,
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   },
   {
     "question": "For QR delivery confirmation, does the customer scan the rider's QR or the rider scan the customer's QR?",
-    "answer": "QR scan is optional, not required. The delivery person may leave the food at the door, because customers may be busy or leaving for work.",
-    "followUp": "When food is left at the door, should the rider take a photo as proof? This protects the customer and the rider.",
-    "source": "Vamsi Bro, 2026-11-20"
+    "answer": "QR scan is optional. When food is left at the door, the rider must take a photo as proof. It is stored and shown in the app.",
+    "followUp": "We show the door photo only to that customer, the assigned rider and Hungr admins - not the public - because it shows a home. Is that OK?",
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
+  },
+  {
+    "question": "Can we remove the crossed-out 'original price' and 'SAVE Rs' labels, since our price is above the hotel price?",
+    "answer": "No. Keep them; they help customers feel they get a good deal.",
+    "followUp": "Before launch, please check with a legal adviser: showing a crossed-out price that nobody really pays can break consumer-protection rules on misleading prices.",
+    "source": "Vamsi Bro, 2026-11-20 (round 2)"
   }
 ]

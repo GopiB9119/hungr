@@ -1,9 +1,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { createHash } = require("node:crypto");
 const { MemoryDB } = require("../test-support/memory-db");
-const { checkCheckoutTerms, createCheckoutSettlement } = require("../checkout-settlement");
+const { PAYMENT_PROVIDER, checkCheckoutTerms, createCheckoutSettlement } = require("../checkout-settlement");
 
-const request = { orderId: "order-7", provider: "test-account", paymentId: "pay/1" };
+const request = { orderId: "order-7", provider: "razorpay", paymentId: "pay/1" };
 const { orderId, provider, paymentId } = request;
 const orderPath = `checkout_orders/${orderId}`;
 const terms = { orderId, provider, uid: "customer", merchantOrderRef: "merchant/order-7", amountMinor: 123, currency: "INR" };
@@ -30,6 +31,19 @@ test("hold writer and settlement share strict term validation independent of lif
   }
 });
 
+test("only Razorpay terms can reserve an order", () => {
+  assert.throws(() => checkCheckoutTerms({ ...held, provider: "phonepe" }));
+  assert.doesNotThrow(() => checkCheckoutTerms({ ...held, provider: PAYMENT_PROVIDER }));
+});
+
+test("a non-Razorpay settlement reference never reaches capture lookup", async () => {
+  let lookups = 0;
+  const { db, settle } = setup({ lookupCapture: async () => { lookups++; return capture; } });
+  await assert.rejects(settle({ ...request, provider: "phonepe" }), /Invalid checkout reference/);
+  assert.equal(lookups, 0);
+  assert.equal(db.writes, 0);
+});
+
 test("overlapping captures issue one pass for exactly the held dates; lost response replays after expiry", async () => {
   let lookups = 0;
   const { db, settle, clock } = setup({ lookupCapture: async (ref) => {
@@ -41,7 +55,7 @@ test("overlapping captures issue one pass for exactly the held dates; lost respo
   assert.deepEqual(a, b);
   assert.ok(db.retries > 0);
   assert.equal(lookups, 2, "provider is not called again inside transaction retry");
-  assert.equal(a.orderId, orderId);
+  assert.deepEqual(a, { orderId, passId: `checkout-${orderId}` });
   assert.deepEqual(db.rows.get(`passes/${a.passId}`), {
     passId: a.passId, userId: terms.uid, orderId, hardExpiryDate: held.hardExpiryDate, createdAt: "stamp",
   });
@@ -75,9 +89,9 @@ test("unconfirmed, unavailable, mismatched and malformed provider results cannot
   assert.equal(db.writes, 0);
 });
 
-test("missing, released, expired or malformed holds issue nothing", async () => {
-  for (const patch of [{ orderId: "different-doc" }, { status: "RELEASED" }, { status: "SETTLED" },
-    { holdExpiresAtMs: ms }, { holdExpiresAtMs: String(ms + 1) }, { clusterId: "" }, { comboSelection: "C" },
+test("missing or malformed holds issue nothing", async () => {
+  for (const patch of [{ orderId: "different-doc" }, { status: "SETTLED" },
+    { holdExpiresAtMs: String(ms + 1) }, { clusterId: "" }, { comboSelection: "C" },
     { serviceDates: [] }, { serviceDates: "2030-01-31" }, { serviceDates: ["2030-02-30"] },
     { serviceDates: Array(498).fill("2030-01-31") }, { serviceDates: ["2030-01-31", "2030-01-31"] },
     { serviceDates: [...held.serviceDates].reverse() }, { hardExpiryDate: "2030-02-01" }]) {
@@ -91,37 +105,102 @@ test("missing, released, expired or malformed holds issue nothing", async () => 
   assert.equal(db.writes, 0);
 });
 
-test("clock and hold terms are read anew on a Firestore retry", async () => {
-  const { db, clock, settle } = setup();
-  db.beforeCommit = () => {
-    db.rows.set(orderPath, { ...held, touched: true });
-    clock.ms = held.holdExpiresAtMs;
-  };
-  await assert.rejects(settle(request), /Hold not active/);
-  assert.equal(db.retries, 1);
-  assert.equal(db.writes, 0);
+const claimKey = (id) => createHash("sha256").update(JSON.stringify([provider, id])).digest("hex");
+function assertCredit(db, id, result, reason) {
+  const creditId = claimKey(id);
+  assert.deepEqual(result, { orderId, passId: null, creditId, status: "CREDITED" });
+  assert.deepEqual(db.rows.get(`checkout_payment_claims/${creditId}`), {
+    orderId, provider, paymentId: id, outcome: "CREDIT", creditId,
+  });
+  assert.deepEqual(db.rows.get(`customer_credits/${creditId}`), {
+    creditId, userId: terms.uid, amountMinor: terms.amountMinor, currency: terms.currency,
+    provider, paymentId: id, orderId, reason, status: "AVAILABLE", createdAt: "stamp",
+  });
+}
 
-  clock.ms = ms;
-  db.beforeCommit = () => db.rows.set(orderPath, { ...held, status: "RELEASED" });
-  await assert.rejects(settle(request), /Order not held/);
-  assert.equal(db.writes, 0);
+test("an expired hold credits the captured amount once, without changing the order or issuing meals", async () => {
+  const { db, clock, settle } = setup();
+  clock.ms = held.holdExpiresAtMs;
+  const [a, b] = await Promise.all([settle(request), settle(request)]);
+  assertCredit(db, paymentId, a, "HOLD_NOT_ACTIVE");
+  assert.deepEqual(a, b);
+  assert.ok(db.retries > 0);
+  assert.equal(db.rows.get(orderPath), held);
+  assert.equal(db.writes, 2);
+  assert.equal(db.rows.size, 3);
 });
 
-test("two captures cannot settle one order, and a claimed payment cannot settle a different order", async () => {
+test("an amount mismatch on an inactive order writes nothing and does not consume the verified claim", async () => {
+  let amountMinor = terms.amountMinor + 1;
+  const { db, settle } = setup({ order: { ...held, status: "RELEASED" },
+    lookupCapture: async () => ({ ...capture, amountMinor }) });
+  await assert.rejects(settle(request), /does not match reserved order/);
+  assert.equal(db.writes, 0);
+  amountMinor = terms.amountMinor;
+  assertCredit(db, paymentId, await settle(request), "HOLD_NOT_ACTIVE");
+  assert.equal(db.writes, 2);
+});
+
+test("clock and hold terms are read anew on a Firestore retry", async () => {
+  for (const expired of [true, false]) {
+    const { db, clock, settle } = setup();
+    const changed = { ...held, status: expired ? "HELD" : "RELEASED", touched: true };
+    db.beforeCommit = () => {
+      db.rows.set(orderPath, changed);
+      if (expired) clock.ms = held.holdExpiresAtMs;
+    };
+    assertCredit(db, paymentId, await settle(request), "HOLD_NOT_ACTIVE");
+    assert.equal(db.rows.get(orderPath), changed);
+    assert.equal(db.retries, 1);
+    assert.equal(db.writes, 2);
+    assert.equal(db.rows.size, 3);
+  }
+});
+
+test("competing captures issue one pass and one duplicate credit; neither can be claimed twice", async () => {
   const otherOrder = { ...held, orderId: "other", merchantOrderRef: "merchant/other" };
   let owner = terms;
-  const { db, settle } = setup({
+  const { db, clock, settle } = setup({
     rows: { "checkout_orders/other": otherOrder },
     lookupCapture: async (ref) => ({ ...capture, ...owner, status: "CAPTURED", paymentId: ref.paymentId }),
   });
   const attempts = [request, { ...request, paymentId: "pay/2" }];
-  const results = await Promise.allSettled(attempts.map(settle));
-  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
-  const winner = attempts[results.findIndex((r) => r.status === "fulfilled")];
-  assert.equal(db.rows.get(orderPath).paymentId, winner.paymentId);
+  const receipts = await Promise.all(attempts.map(settle));
+  const order = db.rows.get(orderPath);
+  const winner = attempts.findIndex((ref) => order.paymentId === ref.paymentId);
+  assert.deepEqual(receipts[winner], { orderId, passId: `checkout-${orderId}` });
+  const i = 1 - winner;
+  assertCredit(db, attempts[i].paymentId, receipts[i], "DUPLICATE_PAYMENT");
+  clock.ms = held.holdExpiresAtMs;
+  assert.deepEqual(await settle(attempts[i]), receipts[i]);
+  assert.equal(db.rows.get(orderPath), order);
+  assert.equal([...db.rows.keys()].filter((p) => p.startsWith("passes/")).length, 1);
+  assert.equal([...db.rows.keys()].filter((p) => p.startsWith("meal_tickets/")).length, held.serviceDates.length);
   owner = otherOrder;
-  await assert.rejects(settle({ ...winner, orderId: "other" }), /Payment already claimed/);
-  assert.equal(db.rows.get("checkout_orders/other").status, "HELD");
+  for (const ref of attempts) await assert.rejects(settle({ ...ref, orderId: "other" }), /Payment already claimed/);
+  assert.equal(db.rows.get("checkout_orders/other"), otherOrder);
+  assert.equal(db.writes, 7);
+});
+
+test("an existing claim must match the capture and credit outcome before replay", async () => {
+  const creditId = claimKey(paymentId);
+  const order = { ...held, status: "SETTLED", paymentId, passId: `checkout-${orderId}` };
+  for (const patch of [{ creditId: "wrong" }, { paymentId: "wrong" }, { orderId: "wrong" },
+    { provider: "wrong" }, { outcome: "UNKNOWN" }]) {
+    const claim = { orderId, provider, paymentId, creditId, outcome: "CREDIT", ...patch };
+    const { db, settle } = setup({ order, rows: { [`checkout_payment_claims/${creditId}`]: claim } });
+    await assert.rejects(settle(request));
+    assert.equal(db.writes, 0);
+  }
+});
+
+test("an invalid clock cannot issue a credit or acknowledge a settled payment", async () => {
+  const { db, clock, settle } = setup({ lookupCapture: async (ref) => ({ ...capture, paymentId: ref.paymentId }) });
+  await settle(request);
+  for (const invalid of [-1, 0.5, NaN, Number.MAX_SAFE_INTEGER + 1]) {
+    clock.ms = invalid;
+    for (const id of [paymentId, "pay/2"]) await assert.rejects(settle({ ...request, paymentId: id }));
+  }
   assert.equal(db.writes, 5);
 });
 

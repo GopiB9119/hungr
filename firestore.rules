@@ -82,23 +82,20 @@ service cloud.firestore {
 
     // Meal Tickets Ledger
     match /meal_tickets/{ticketId} {
-      function validProofFields() {
-        let proof = request.resource.data.get('dropProofImageUrl', null);
-        let delivered = request.resource.data.get('deliveredAt', null);
-        return (proof == null || proof is string) && (delivered == null || delivered is string);
-      }
-
       allow read: if isAdmin() || isOwner(resource.data.userId) || isAssignedDriver();
 
       // Purchase, paid add-ons, skip/replacement and driver assignment are server writes.
+      // DELIVERED is server-only too: the rider uploads delivery_proofs/{ticketId}/proof
+      // and the finalizeDeliveryProof function marks the ticket (founder rule: photo proof).
       allow update: if isOwner(resource.data.userId) && resource.data.status == 'SCHEDULED' &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comboSelection']) &&
         request.resource.data.comboSelection in ['A', 'B'] && beforeMealCutoff();
-      allow update: if isAssignedDriver() && resource.data.status == 'LOCKED' &&
-        request.resource.data.status == 'DELIVERED' && validProofFields() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'dropProofImageUrl', 'deliveredAt'
-        ]);
+    }
+
+    // Money kept from a double or late payment. Only the server writes it;
+    // ops refunds it by hand if the customer asks.
+    match /customer_credits/{creditId} {
+      allow read: if isAdmin() || isOwner(resource.data.userId);
     }
 
     // Daily Inventory & Batch Locks

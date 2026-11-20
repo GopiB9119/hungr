@@ -3,6 +3,18 @@
 class BusinessRules {
   BusinessRules._();
 
+  static const int hungrMarginPerItem = 5;
+  static const int passMaxItemPrice = 50;
+  // Founder decision (20 Nov 2026), same limit as functions/meal-scheduling.js.
+  static const int maxSkipsPerPass = 3;
+
+  static int customerPriceForHotelPrice(int hotelPrice) {
+    if (hotelPrice < 0) {
+      throw ArgumentError.value(hotelPrice, 'hotelPrice', 'Cannot be negative');
+    }
+    return hotelPrice + hungrMarginPerItem;
+  }
+
   // Kitchen & Capacity
   static const int totalDailyCapacity = 100;
   static const int aunty1Capacity = 50; // Kitchen Unit 1

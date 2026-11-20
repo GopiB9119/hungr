@@ -1,3 +1,5 @@
+import '../../../core/constants/business_rules.dart';
+
 /// Model representing a Tiffin breakfast dish, add-on, or beverage in Hungr.
 class TiffinItem {
   final String id;
@@ -27,6 +29,8 @@ class TiffinItem {
     this.imageRef,
     required this.category,
   });
+
+  bool get isPassEligible => price > 0 && price <= BusinessRules.passMaxItemPrice;
 
   /// Category constants
   static const String categoryDailyBreakfast = 'Daily Breakfast';

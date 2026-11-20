@@ -7,7 +7,7 @@ const { planKitchenBatch } = require("../kitchen-plan");
 
 const dates = ["2030-02-01", "2030-02-03"];
 const quote = (id = "alpha") => ({
-  orderId: id, uid: `u-${id}`, provider: "test-store", merchantOrderRef: `m-${id}`,
+  orderId: id, uid: `u-${id}`, provider: "razorpay", merchantOrderRef: `m-${id}`,
   amountMinor: 12345, currency: "INR", clusterId: "test-gate", comboSelection: "B",
   serviceDates: [...dates], hardExpiryDate: dates[1], holdExpiresAtMs: Date.parse("2030-01-30T06:10:00Z"),
 });
