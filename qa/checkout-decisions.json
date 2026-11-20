@@ -2,5 +2,7 @@
   { "question": "Which payment provider should we use in test mode?", "answer": null },
   { "question": "Which shop menu and prices are approved, and where does the server read them?", "answer": null },
   { "question": "Which delivery days does each pass cover, including closures and skips?", "answer": null },
-  { "question": "If a payment succeeds but a meal cannot be supplied, what refund or replacement is approved?", "answer": null }
+  { "question": "If a payment succeeds but a meal cannot be supplied, what refund or replacement is approved?", "answer": null },
+  { "question": "Which area launches first, and how many meals per day can each kitchen make?", "answer": null },
+  { "question": "For QR delivery confirmation, does the customer scan the rider's QR or the rider scan the customer's QR?", "answer": null }
 ]
