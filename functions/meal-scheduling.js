@@ -2,6 +2,8 @@ const { planKitchenBatch } = require("./kitchen-plan");
 
 const DAY = 24 * 60 * 60 * 1000;
 const IST = 330 * 60 * 1000;
+// Founder decision (20 Nov 2026): a customer may skip at most 3 meals per pass.
+const MAX_SKIPS_PER_PASS = 3;
 const istDay = (ms) => Math.floor((ms + IST) / DAY);
 const dayIso = (day) => new Date(day * DAY).toISOString();
 const dayKey = (day) => dayIso(day).slice(0, 10);
@@ -88,11 +90,18 @@ function createSkipMealTicket({ db, HttpsError, serverTimestamp, now = Date.now 
         throw new HttpsError("failed-precondition", "403_CUTOFF_EXCEEDED: Meal changes are closed.");
       }
       let tail = deliveryDay;
+      let skips = 0;
       for (const doc of ledger.docs) {
         const meal = doc.data();
-        if (meal.userId === uid && (meal.status === "SCHEDULED" || meal.status === "LOCKED")) {
+        if (meal.userId !== uid) continue;
+        if (meal.status === "SKIPPED") skips++;
+        else if (meal.status === "SCHEDULED" || meal.status === "LOCKED") {
           tail = Math.max(tail, checkedDay(meal.deliveryDate, "pass delivery date"));
         }
+      }
+      if (skips >= MAX_SKIPS_PER_PASS) {
+        throw new HttpsError("failed-precondition",
+          `403_SKIP_LIMIT_REACHED: This pass has already used all ${MAX_SKIPS_PER_PASS} skips.`);
       }
       if (tail + 1 > expiryDay) {
         throw new HttpsError("failed-precondition", "403_CEILING_REACHED: Replacement exceeds pass validity.");

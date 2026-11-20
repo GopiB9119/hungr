@@ -130,3 +130,35 @@ meals and companion portions do not use this ledger: do not populate it from
 the nominal kitchen limit or enable it against a live kitchen. Outstanding
 [business decisions](qa/checkout-decisions.json) can be resumed with
 [`checkout-handoff.ps1`](qa/checkout-handoff.ps1).
+
+## 20 November: founder answers (Vamsi)
+
+Recorded in [the decision list](qa/checkout-decisions.json). Checkout stays
+disabled: every answer still has an open follow-up.
+
+| Topic | Answer | Still needed |
+|---|---|---|
+| Payment | Razorpay or PhonePe | Pick one |
+| Menu and price | Breakfast items; hotel price + ₹5 | ₹5 per item or per order? Which hotels set prices? Pass price? |
+| Pass and skips | Every day; 3 skips | Per pass or per month? |
+| Missed meal | No refund; food the next day | Extra meal next day or one day added at the end? |
+| Area and kitchens | Any area in Khammam | Daily meal limit per kitchen |
+| Delivery proof | QR optional; food may be left at the door | Door photo as proof? |
+
+**Changed:** the server [skip function](functions/meal-scheduling.js) now
+refuses a 4th skip on the same pass (`403_SKIP_LIMIT_REACHED`). Concurrent
+requests cannot both use the last skip, and a retried skip still returns
+its original receipt. The customer app's skip screen is still a local demo
+and does not call this function yet.
+
+**Risks to fix before launch:**
+
+- The app shows crossed-out "original" prices and "SAVE ₹" labels (for
+  example ~~₹65~~ ₹49). If our price is the hotel price + ₹5, these claims are
+  false and must be removed.
+- "No refund" can cover a missed meal that is replaced. It must not cover a
+  double charge, or money taken when no pass was created. Return that money.
+- Show the missed-meal rule and the skip limit to the customer before
+  payment.
+- Leaving food at the door without proof makes "delivered" claims impossible
+  to check. A quick door photo protects the customer and the rider.

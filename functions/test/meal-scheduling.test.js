@@ -72,6 +72,35 @@ test("contention for the last valid day leaves the other original meal scheduled
   assert.equal(db.writes, 2);
 });
 
+test("a pass allows three skips; a fourth is refused, but replaying the third receipt still works", async () => {
+  const used = (id, fields = {}) => ({ [`meal_tickets/${id}`]: ticket({ status: "SKIPPED", ...fields }) });
+  const { db, skip } = setup({
+    ...used("s1"), ...used("s2"),
+    ...used("other-user", { userId: "other" }), ...used("other-pass", { passId: "other-pass" }),
+  });
+  const third = await skip();
+  assert.equal(db.rows.get(source).status, "SKIPPED");
+  assert.deepEqual(await skip(), third, "a lost response is not another skip");
+
+  const writes = db.writes;
+  await assert.rejects(skip(third.newTicketId), (err) =>
+    err.code === "failed-precondition" && /SKIP_LIMIT_REACHED/.test(err.message));
+  assert.equal(db.writes, writes);
+  assert.equal(db.rows.get(`meal_tickets/${third.newTicketId}`).status, "SCHEDULED");
+});
+
+test("two concurrent skips cannot both spend the last allowed skip", async () => {
+  const { db, skip } = setup({
+    "meal_tickets/s1": ticket({ status: "SKIPPED" }), "meal_tickets/s2": ticket({ status: "SKIPPED" }),
+    "meal_tickets/two": ticket({ deliveryDate: "2030-02-01" }),
+  });
+  const results = await Promise.allSettled([skip("one"), skip("two")]);
+  assert.ok(db.retries > 0);
+  assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+  assert.match(results.find((r) => r.status === "rejected").reason.message, /SKIP_LIMIT_REACHED/);
+  assert.equal([...db.rows.values()].filter((row) => row.status === "SKIPPED").length, 3);
+});
+
 test("source, pass and existing receipt must agree on ownership; broken links never mint credit", async () => {
   for (const [rows, code] of [
     [{ [source]: ticket({ userId: "other" }) }, "permission-denied"],

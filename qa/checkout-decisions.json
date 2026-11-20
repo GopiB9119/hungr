@@ -1,8 +1,38 @@
 [
-  { "question": "Which payment provider should we use in test mode?", "answer": null },
-  { "question": "Which shop menu and prices are approved, and where does the server read them?", "answer": null },
-  { "question": "Which delivery days does each pass cover, including closures and skips?", "answer": null },
-  { "question": "If a payment succeeds but a meal cannot be supplied, what refund or replacement is approved?", "answer": null },
-  { "question": "Which area launches first, and how many meals per day can each kitchen make?", "answer": null },
-  { "question": "For QR delivery confirmation, does the customer scan the rider's QR or the rider scan the customer's QR?", "answer": null }
+  {
+    "question": "Which payment provider should we use in test mode?",
+    "answer": "Razorpay or PhonePe. Not final yet.",
+    "followUp": "Pick one: Razorpay or PhonePe.",
+    "source": "Vamsi Bro, 2026-11-20"
+  },
+  {
+    "question": "Which shop menu and prices are approved, and where does the server read them?",
+    "answer": "Breakfast (tiffin) items. Customer price is the same as the hotel's own price plus Rs 5.",
+    "followUp": "Is the Rs 5 per item or per order? Which hotels, and who enters their prices? How is a pass priced? Can we remove the crossed-out 'original price' and 'SAVE Rs' labels, since our price is above the hotel price?",
+    "source": "Vamsi Bro, 2026-11-20"
+  },
+  {
+    "question": "Which delivery days does each pass cover, including closures and skips?",
+    "answer": "The pass covers every day. A customer can skip 3 times.",
+    "followUp": "Is it 3 skips per pass (the server now enforces this) or 3 per month?",
+    "source": "Vamsi Bro, 2026-11-20"
+  },
+  {
+    "question": "If a payment succeeds but a meal cannot be supplied, what refund or replacement is approved?",
+    "answer": "No refund. The customer gets the food the next day.",
+    "followUp": "Is the replacement an extra meal the next day, or one more day added at the end of the pass? If money is taken but no pass is created, or a customer pays twice, that money must be returned - confirm.",
+    "source": "Vamsi Bro, 2026-11-20"
+  },
+  {
+    "question": "Which area launches first, and how many meals per day can each kitchen make?",
+    "answer": "Any area in Khammam. Each kitchen handles its own orders.",
+    "followUp": "About how many breakfasts can each kitchen make per day? We need a limit so we never sell more than a kitchen can cook.",
+    "source": "Vamsi Bro, 2026-11-20"
+  },
+  {
+    "question": "For QR delivery confirmation, does the customer scan the rider's QR or the rider scan the customer's QR?",
+    "answer": "QR scan is optional, not required. The delivery person may leave the food at the door, because customers may be busy or leaving for work.",
+    "followUp": "When food is left at the door, should the rider take a photo as proof? This protects the customer and the rider.",
+    "source": "Vamsi Bro, 2026-11-20"
+  }
 ]
