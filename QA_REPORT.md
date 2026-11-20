@@ -103,3 +103,30 @@ were not supplied or sought.
 dispatch, legal compliance, store submission, production load or a real
 customer delivery. No contact was made with a live Firebase project, no
 message was sent to a customer, and nothing was deployed or pushed.
+
+## 20 November follow-up: checkout backend, offline only
+
+The customer app is still estimate-only. Neither [the hold writer](functions/checkout-hold.js)
+nor [the settlement helper](functions/checkout-settlement.js) is exposed as a deployed
+endpoint. A trusted caller supplies the order ID, quote, explicit delivery dates
+and expiry. Only a single standard portion per date is supported. A hold reserves
+**all** quoted dates against pre-allocated inventory or writes nothing. A
+matching captured payment from an injected server-side lookup issues one pass and
+one ticket for each held date. Repeating the same inputs does not issue another pass.
+
+**Verified:** 31 Functions tests on Node 22.23.4, 13 admin regressions, and 6
+scenarios on a fresh loopback Firestore emulator (1.20.4). The emulator exercised
+two buyers racing for the last portion, concurrent confirmations, and owner-only
+pass reads. Provider responses, prices and schedules were synthetic. No Flutter or
+Android gate was rerun for this backend-only change.
+
+**Not ready to charge:** no authoritative pricing adapter, production inventory
+allocation, gateway verification adapter, or gateway idempotency key is wired in.
+A retry must reuse the original server order ID. The tests prove duplicate
+*issuance* is prevented, not that a real gateway cannot charge twice. Expired or
+declined holds are not automatically returned to stock; late captures and second
+payments need reconciliation under the approved refund policy. Skips, legacy
+meals and companion portions do not use this ledger: do not populate it from
+the nominal kitchen limit or enable it against a live kitchen. Outstanding
+[business decisions](qa/checkout-decisions.json) can be resumed with
+[`checkout-handoff.ps1`](qa/checkout-handoff.ps1).

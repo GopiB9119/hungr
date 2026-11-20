@@ -26,3 +26,12 @@ live SMS, a payment account, production credentials, or deployment.
 
 The [launch-readiness report](QA_REPORT.md) lists the evidence, what remains
 unsafe to launch, and the next work in priority order.
+
+## Resume checkout work
+
+Run `.\qa\checkout-handoff.ps1` to see which decisions are still open. Add
+`-Verify` to also run the offline Functions tests. After the owner confirms a
+decision, replace its `null` in [the decision list](qa/checkout-decisions.json)
+with a short business answer. Never paste chat history, phone numbers, customer
+details or provider keys. The script reads answers as text; it does not read
+WhatsApp, start an agent, enable payments, or run anything in the background.

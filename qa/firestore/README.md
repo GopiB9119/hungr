@@ -16,6 +16,15 @@ It does not load rules, clear databases, or follow redirects. The owner-combo
 test reports the **emulator's** current IST edit window; a run covers that side
 of the nightly boundary, not a simulated clock.
 
+To exercise the offline checkout helpers with real Firestore transactions, use
+a **fresh** instance of that same emulator and the locked dependencies in
+`functions/node_modules`. Run `node --test .\qa\firestore\checkout.test.cjs`
+from the repo root. Two buyers compete for one portion, then two confirmations
+race for the winning order. The test also checks the customer cannot edit the
+capacity ledger or read another customer's pass. The payment lookup is a local
+fixture, not a provider. The test creates a fixed service-day fixture and will
+fail rather than replace existing inventory; discard the emulator after the run.
+
 ## Required before launch
 
 - **Provision staff roles in Firebase Auth** from a separately verified roster:

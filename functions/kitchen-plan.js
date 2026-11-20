@@ -92,4 +92,4 @@ function planKitchenBatch(date, previous, docs) {
   return { locks, totals, changed };
 }
 
-module.exports = { planKitchenBatch };
+module.exports = { planKitchenBatch, totalDailyCapacity: vendors.length * CAPACITY };
