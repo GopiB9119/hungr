@@ -75,9 +75,14 @@ parsed, but `npm audit` could not run without a lock.
 - Dependency check: the npm audit endpoint was rate-limited. OSV matched
   **one moderate advisory**, [GHSA-w5hq-g745-h8pq](https://osv.dev/vulnerability/GHSA-w5hq-g745-h8pq),
   on transitive `uuid` 9.0.1 and 10.0.0 across 228 unique locked npm
-  package/version pairs. No high/critical match was returned by that query.
-  Upgrade the owning SDKs and rerun the audit; do not force a major version
-  override without compatibility testing. This was not a full supply-chain audit.
+  package/version pairs. The advisory affects the `v3`, `v5`, and `v6` APIs
+  when writing into caller-supplied buffers. Static inspection found Firebase
+  Admin's Eventarc helper imports and uses only `v4`; it did not find calls to
+  the affected buffer APIs in the Firebase packages checked. **This advisory
+  is present in the dependency tree, but its affected code path was not found
+  in this app.** Do not silently force a cross-major UUID override. Upgrade
+  the owning SDKs when a compatible release is available and rerun the audit.
+  No high/critical match was returned; this was not a full supply-chain audit.
 - Five rules scenarios passed on the official Firestore emulator (1.20.4),
   loopback only. The real emulator clock exercised the **closed** side of the
   IST window; the client and scheduler also have deterministic boundary tests.
